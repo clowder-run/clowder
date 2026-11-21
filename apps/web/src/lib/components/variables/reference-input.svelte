@@ -84,6 +84,9 @@
                         },
                         ".cm-content": { padding: "0" },
                         ".cm-line": { padding: "0 11px" },
+                        ".cm-cursor": {
+                            borderLeftColor: "var(--foreground)",
+                        },
                     }),
                 ],
             }),
