@@ -182,25 +182,24 @@ configs:
               // collectors that read it run in host_network instead.
               disable_collectors = ["netdev", "netstat", "sockstat", "arp", "softnet", "udp_queues"]
 
+              // interrupts, softirqs, systemd and logind are per CPU, IRQ or unit: about 8k series
+              // across four machines that nothing queries, written to GreptimeDB every scrape.
               enable_collectors = [
                 "buddyinfo",
-                "interrupts",
                 "ksmd",
-                "logind",
                 "meminfo_numa",
                 "mountstats",
                 "processes",
-                "softirqs",
-                "systemd",
                 "zoneinfo",
               ]
             }
 
             // Uncloud has no host networking, so read /proc/net from host PID 1's network
-            // namespace instead of Alloy's own container interfaces.
+            // namespace instead of Alloy's own container interfaces. lnstat is left out: ~4k series per
+            // machine that nothing queries.
             prometheus.exporter.unix "host_network" {
               procfs_path    = "/rootfs/proc/1"
-              set_collectors = ["netdev", "netstat", "sockstat", "arp", "softnet", "udp_queues", "lnstat"]
+              set_collectors = ["netdev", "netstat", "sockstat", "arp", "softnet", "udp_queues"]
             }
 
             prometheus.scrape "host" {
@@ -208,7 +207,7 @@ configs:
                 prometheus.exporter.unix.host.targets,
                 prometheus.exporter.unix.host_network.targets,
               )
-              scrape_interval = "15s"
+              scrape_interval = "30s"
 
               forward_to = [
                 prometheus.remote_write.greptime.receiver,
@@ -237,7 +236,8 @@ configs:
               // reference bits (referenced_memory), or walk each container's writable layer
               // (disk), which filled ~2GB of inode cache charged to Alloy on a busy host.
               // container_fs_usage_bytes is unused; fs reads/writes come from diskIO.
-              disabled_metrics = ["perf_event", "resctrl", "referenced_memory", "disk"]
+              // advtcp, tcp and udp are per-container socket stats nothing queries (~9k series).
+              disabled_metrics = ["perf_event", "resctrl", "referenced_memory", "disk", "advtcp", "tcp", "udp"]
 
               allowlisted_container_labels = [
                 "com.docker.compose.project",
@@ -249,7 +249,7 @@ configs:
 
             prometheus.scrape "containers" {
               targets         = prometheus.exporter.cadvisor.docker.targets
-              scrape_interval = "15s"
+              scrape_interval = "30s"
 
               forward_to = [
                 prometheus.remote_write.greptime.receiver,
@@ -292,7 +292,7 @@ configs:
 
             prometheus.scrape "exporters" {
               targets         = discovery.relabel.exporters.output
-              scrape_interval = "15s"
+              scrape_interval = "30s"
 
               forward_to = [
                 prometheus.remote_write.greptime.receiver,
@@ -313,7 +313,7 @@ configs:
             prometheus.scrape "uncloud" {
               targets         = [{"__address__" = sys.env("UNCLOUD_MACHINE_ID") + ".m.sidecar.internal:80"}]
               metrics_path    = "/ucinternal/metrics"
-              scrape_interval = "15s"
+              scrape_interval = "30s"
               bearer_token    = sys.env("SIDECAR_TOKEN")
 
               forward_to = [
@@ -323,7 +323,7 @@ configs:
 
 
             // ----------------------------------------------------
-            // Probes and Alloy's own metrics
+            // Probes
             // ----------------------------------------------------
 
             // From each machine: does Uncloud's DNS answer through Docker's resolver, and is
@@ -344,14 +344,9 @@ configs:
               }
             }
 
-            prometheus.exporter.self "alloy" {}
-
             prometheus.scrape "probes" {
-              targets         = array.concat(
-                prometheus.exporter.blackbox.probes.targets,
-                prometheus.exporter.self.alloy.targets,
-              )
-              scrape_interval = "15s"
+              targets         = prometheus.exporter.blackbox.probes.targets
+              scrape_interval = "30s"
 
               forward_to = [
                 prometheus.remote_write.greptime.receiver,
@@ -402,13 +397,13 @@ configs:
               ]
             }
 
-            // Caddy also exports Go runtime and process metrics; only its own are kept. The
-            // receiver is reachable on the Uncloud network, so this also bounds what other
-            // containers can push.
+            // Only the series the HTTP charts query are kept: per-host histograms are thousands of
+            // series each. The receiver is reachable on the Uncloud network, so this also bounds
+            // what other containers can push.
             prometheus.relabel "caddy" {
               rule {
                 source_labels = ["__name__"]
-                regex         = "caddy_.*"
+                regex         = "caddy_http_request_duration_seconds_(bucket|count)|caddy_http_response_size_bytes_sum"
                 action        = "keep"
               }
 
@@ -621,7 +616,7 @@ configs:
             // stage.metrics series are exposed on Alloy's own /metrics endpoint.
             prometheus.scrape "visitors" {
               targets         = [{"__address__" = "127.0.0.1:12345"}]
-              scrape_interval = "15s"
+              scrape_interval = "30s"
 
               forward_to = [
                 prometheus.relabel.visitors.receiver,

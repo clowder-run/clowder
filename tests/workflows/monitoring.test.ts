@@ -26,6 +26,7 @@ it("pins the monitoring template to its MONITORING_VERSION", () => {
         2: "d68af3e5a5ba727e2d9db16145950964cc3997af57f3193c4c28a1796aaf0454",
         3: "bb591647fc2fd3dbecf076c064bdeb27d0ec096a77fc50e7327352c02c1bd3f2",
         4: "b67c177f6786a12145e3934731efd53550f7bb534104323577c8a58e4e94f377",
+        5: "7a388e90d306bf596825c90e88a192c66389d0fca9e49779104027f14d43f5ff",
     };
 
     expect(createHash("sha256").update(template).digest("hex")).toBe(versions[MONITORING_VERSION]);
