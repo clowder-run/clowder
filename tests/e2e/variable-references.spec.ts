@@ -374,12 +374,22 @@ test.describe("references in the editor", () => {
         expect(await savedEnv()).toBe("A= # user");
     });
 
-    test("read-only internal resources never offer the picker", async ({ page }) => {
-        await openVariables(page, ids.internal, ids.monitoring, false);
-        await expect(editor(page)).toHaveAttribute("aria-readonly", "true");
-        await editor(page).click();
-        await page.keyboard.type("{{");
-        await expect(popup(page)).toHaveCount(0);
+    test("the read-only monitoring stack never offers the picker", async ({ page }) => {
+        // Only the monitoring stack is locked; seeding it for every test would turn on the main cluster's observability.
+        await sql(
+            "INSERT INTO cluster_monitoring (cluster_id, project_id, resource_id, encrypted_password) VALUES ($1, $2, $3, 'unused')",
+            [ids.mainCluster, ids.internal, ids.monitoring],
+        );
+
+        try {
+            await openVariables(page, ids.internal, ids.monitoring, false);
+            await expect(editor(page)).toHaveAttribute("aria-readonly", "true");
+            await editor(page).click();
+            await page.keyboard.type("{{");
+            await expect(popup(page)).toHaveCount(0);
+        } finally {
+            await sql("DELETE FROM cluster_monitoring WHERE cluster_id = $1", [ids.mainCluster]);
+        }
     });
 });
 
