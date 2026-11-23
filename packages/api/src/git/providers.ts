@@ -22,6 +22,11 @@ export type GitForge = Exclude<GitProvider, "generic">;
 // Forgejo and Gitea share GitHub's /login/oauth endpoints; the other forges take access tokens only.
 export const gitOAuthProviderKinds = ["forgejo", "github", "gitea"] as const satisfies GitForge[];
 
+/** The provider as an OAuth kind, or `undefined` when it takes access tokens only. */
+export function gitOAuthProviderKind(provider: GitProvider) {
+    return gitOAuthProviderKinds.find((kind) => kind === provider);
+}
+
 export const gitProviderLabels: Record<GitProvider, string> = {
     forgejo: "Forgejo",
     github: "GitHub",

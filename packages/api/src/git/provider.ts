@@ -55,6 +55,9 @@ const maxResponseBytes = 4 * 1024 * 1024;
 
 const maxRepositories = 1000;
 
+// Requests one forge client may send; 1000 repositories take 11 pages of 100, with room for smaller pages.
+const maxForgeRequests = 110;
+
 function invalid(): never {
     throw new ORPCError("BAD_REQUEST", { message: "Invalid Git provider request" });
 }
@@ -414,6 +417,7 @@ function forge(input: AccountInput, webhookSecret?: string): ForgeProvider {
             (!Predicate.isString(input.token) || !/^[\x21-\x7e]{1,16384}$/u.test(input.token)))
     )
         invalid();
+    let requests = 0;
 
     return forgeFactories[input.provider]({
         baseUrl: validateGitServerUrl(input.serverUrl, input.provider),
@@ -421,7 +425,9 @@ function forge(input: AccountInput, webhookSecret?: string): ForgeProvider {
             webhookSecret === undefined
                 ? { type: "token", token: input.token }
                 : { type: "anonymous" },
-        fetch: gitProviderFetch,
+        // forges follows next-page links even from empty pages, so a hostile server could page forever.
+        fetch: (url, init) =>
+            ++requests > maxForgeRequests ? badResponse() : gitProviderFetch(url, init),
         userAgent: "Clowder",
         timeout: 15_000,
         webhookSecret,
@@ -434,6 +440,9 @@ async function forgeCall<T>(call: () => Promise<T>): Promise<T> {
         return await call();
     } catch (error) {
         if (error instanceof ORPCError) throw error;
+
+        // forges wraps what our fetch throws in its own network error.
+        if (error instanceof Error && error.cause instanceof ORPCError) throw error.cause;
 
         return requestFailed();
     }

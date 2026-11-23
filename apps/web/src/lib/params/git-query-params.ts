@@ -2,7 +2,7 @@ import { gitProviders } from "@clowder/api/git/providers";
 import { createSerializer, parseAsBoolean, parseAsString, parseAsStringLiteral } from "nuqs-svelte";
 
 export {
-    gitOAuthProviderKinds,
+    gitOAuthProviderKind,
     gitProviderLabels,
     gitProviders,
     gitProviderServerUrls,

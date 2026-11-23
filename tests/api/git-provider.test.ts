@@ -548,6 +548,17 @@ describe("Account discovery", () => {
         },
     );
 
+    // forges wraps transport errors, so these check the codes survive its client.
+    it("keeps the transport's error codes through forges", async () => {
+        network.addresses = [{ address: "127.0.0.1", family: 4 }];
+        await expect(getGitAccount(github)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+        expect(request).not.toHaveBeenCalled();
+
+        network.addresses = [{ address: "93.184.216.34", family: 4 }];
+        network.reply = () => ({ chunks: [Buffer.alloc(4 * 1024 * 1024 + 1)] });
+        await expect(getGitAccount(github)).rejects.toMatchObject({ code: "PAYLOAD_TOO_LARGE" });
+    });
+
     it("preserves string IDs and drops unsafe optional display names", async () => {
         network.reply = () => ({
             data: { id: "9007199254740993", login: "alice", name: "unsafe\nname" },
@@ -634,6 +645,18 @@ describe("Repository discovery", () => {
         });
         await expect(listGitRepositories(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
         expect(network.calls.map(({ url }) => url.host)).toEqual(["api.github.com"]);
+    });
+
+    it("stops a server that links empty pages forever", async () => {
+        network.reply = (url) => {
+            const next = new URL(url);
+            next.searchParams.set("page", String(Number(url.searchParams.get("page") ?? "1") + 1));
+
+            return { data: [], headers: { link: `<${next.href}>; rel="next"` } };
+        };
+
+        await expect(listGitRepositories(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
+        expect(network.calls).toHaveLength(110);
     });
 
     it("keeps Forgejo path prefixes", async () => {

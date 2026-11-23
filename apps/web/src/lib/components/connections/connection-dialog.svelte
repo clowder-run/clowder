@@ -30,7 +30,7 @@
     import { Textarea } from "$lib/components/ui/textarea";
     import {
         connectionFormParsers,
-        gitOAuthProviderKinds,
+        gitOAuthProviderKind,
         gitProviderLabels,
         gitProviders,
         gitProviderServerUrls,
@@ -123,9 +123,7 @@
 
     // Only forges with GitHub-style OAuth endpoints offer OAuth.
     const oauthKind = $derived(
-        gitOAuthProviderKinds.find(
-            (kind) => kind === fields.provider.current,
-        ),
+        gitOAuthProviderKind(fields.provider.current),
     );
 
     // A crafted URL must not enable OAuth for a provider without it.
@@ -337,12 +335,13 @@
     );
 
     watch.pre(
-        () => [
-            fields.provider.current,
-            authMode,
-            serverUrl,
-            fields.oauthProviderId.current,
-        ],
+        () =>
+            [
+                fields.provider.current,
+                authMode,
+                serverUrl,
+                fields.oauthProviderId.current,
+            ] as const,
         (current, previous) => {
             if (
                 !previous ||
@@ -368,9 +367,7 @@
                 if (selected) serverUrl = selected.serverUrl;
                 else if (provider !== previousProvider) {
                     serverUrl =
-                        gitProviderServerUrls[
-                            fields.provider.current
-                        ] ??
+                        gitProviderServerUrls[provider] ??
                         matchingOAuthProviders[0]?.serverUrl ??
                         "";
                 }
@@ -810,13 +807,11 @@
                                     provider,
                                     oauthProviderId: null,
                                     setupExpanded: null,
-                                    authMode:
-                                        gitOAuthProviderKinds.some(
-                                            (kind) =>
-                                                kind === provider,
-                                        )
-                                            ? authMode
-                                            : "token",
+                                    authMode: gitOAuthProviderKind(
+                                        provider,
+                                    )
+                                        ? authMode
+                                        : "token",
                                 });
                             }}
                         >
