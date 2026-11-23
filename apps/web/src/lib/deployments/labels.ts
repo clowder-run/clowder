@@ -1,3 +1,5 @@
+import { gitProviderLabels } from "$lib/params/git-query-params";
+
 /** Names for workflow jobs that deploy no resource; a resource deployment shows the resource. */
 export const jobLabels = new Map([
     ["InitializeCluster", "Cluster initialization"],
@@ -10,8 +12,7 @@ export const jobLabels = new Map([
 
 /** Where a deployment's code came from, as in "via GitHub". */
 export const sourceLabels = {
-    forgejo: "Forgejo",
-    github: "GitHub",
+    ...gitProviderLabels,
     git: "Git",
     docker: "Docker",
 };

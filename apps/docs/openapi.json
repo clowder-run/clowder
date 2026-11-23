@@ -4860,8 +4860,9 @@
                                     },
                                     "provider": {
                                         "enum": [
+                                            "forgejo",
                                             "github",
-                                            "forgejo"
+                                            "gitea"
                                         ],
                                         "type": "string"
                                     },
@@ -4926,8 +4927,15 @@
                                         "properties": {
                                             "provider": {
                                                 "enum": [
-                                                    "github",
                                                     "forgejo",
+                                                    "github",
+                                                    "gitlab",
+                                                    "gitea",
+                                                    "bitbucket",
+                                                    "gitee",
+                                                    "gitcafe",
+                                                    "pushin",
+                                                    "upstream",
                                                     "generic"
                                                 ],
                                                 "type": "string"
@@ -5085,8 +5093,15 @@
                                     },
                                     "provider": {
                                         "enum": [
-                                            "github",
                                             "forgejo",
+                                            "github",
+                                            "gitlab",
+                                            "gitea",
+                                            "bitbucket",
+                                            "gitee",
+                                            "gitcafe",
+                                            "pushin",
+                                            "upstream",
                                             "generic"
                                         ],
                                         "type": "string"

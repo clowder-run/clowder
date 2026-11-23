@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { GitProvider } from "$lib/params/git-query-params";
     import { Field } from "$lib/components/ui/field";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
@@ -25,7 +26,7 @@
     }: {
         id: string;
         busy: boolean;
-        provider: "forgejo" | "github" | "generic";
+        provider: GitProvider;
         initial: {
             authType: "token" | "oauth";
             hasCredentials: boolean;

@@ -1,15 +1,13 @@
+import { gitProviders } from "@clowder/api/git/providers";
 import { createSerializer, parseAsBoolean, parseAsString, parseAsStringLiteral } from "nuqs-svelte";
 
-// Order drives the order of provider pickers.
-export const gitProviders = ["forgejo", "github", "generic"] as const;
-
-export type GitProvider = (typeof gitProviders)[number];
-
-export const gitProviderLabels: Record<GitProvider, string> = {
-    forgejo: "Forgejo",
-    github: "GitHub",
-    generic: "Generic Git",
-};
+export {
+    gitOAuthProviderKinds,
+    gitProviderLabels,
+    gitProviders,
+    gitProviderServerUrls,
+    type GitProvider,
+} from "@clowder/api/git/providers";
 
 // Only non-secret fields belong in the URL.
 export const connectionFormParsers = {
