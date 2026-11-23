@@ -42,12 +42,12 @@ export function Docs({
         <Provider {...props}>
             <DocsLayout {...docsOptions(repoStats)} sidebar={sidebarOptions} tree={data.tree}>
                 <DocsPage toc={toc}>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between border-b">
                         <div>
                             <DocsTitle>{title}</DocsTitle>
                             <DocsDescription>{description}</DocsDescription>
                         </div>
-                        <div className="flex flex-row gap-2 items-center border-b -mt-4 pb-6">
+                        <div className="flex flex-row gap-2 items-center -mt-4 pb-6">
                             <MarkdownCopyButton markdownUrl={markdownUrl} />
                             <ViewOptionsPopover markdownUrl={markdownUrl} githubUrl={githubUrl} />
                         </div>
