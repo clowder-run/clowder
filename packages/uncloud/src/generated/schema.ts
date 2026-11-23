@@ -58,26 +58,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/caddy/deploy": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Deploy Caddy with an image and global Caddyfile
-         * @description Like `uc caddy deploy`, but keeps the rest of the running caddy service spec (environment, volumes, placement), so a Caddy deployed from Compose keeps its customizations. An invalid global Caddyfile does not fail the deployment: Caddy keeps its previous config and the reason shows up as lastReconciliationError in /api/v1/caddy/configs.
-         */
-        post: operations["deployCaddy"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/cluster/connect": {
         parameters: {
             query?: never;
@@ -724,16 +704,6 @@ export interface components {
             type: string;
             values: string[];
         };
-        DeployCaddyRequest: {
-            /** @description Global Caddyfile prepended to the generated config. Empty removes it. */
-            caddyfile: string;
-            /** @description Environment variables merged into the caddy container's environment. */
-            env?: {
-                [key: string]: string;
-            };
-            /** @description Caddy image. Custom images must include curl and start Caddy with /etc/caddy/Caddyfile. */
-            image: string;
-        };
         DeployComposeEvent: {
             /** Format: int64 */
             current?: number;
@@ -1205,75 +1175,6 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    deployCaddy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeployCaddyRequest"];
-            };
-        };
-        responses: {
-            /** @description Server-Sent deployment events */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/event-stream": components["schemas"]["DeployComposeEvent"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
                 headers: {
                     [name: string]: unknown;
                 };

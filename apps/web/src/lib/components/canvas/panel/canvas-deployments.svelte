@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { sourceLabels } from "$lib/deployments/labels";
     import ConfirmDialog from "$lib/components/settings/confirm-dialog.svelte";
     import {
         Alert,
@@ -139,20 +140,13 @@
     // Stopped from the canvas: the deployment is still the live one, but nothing runs.
     const stopped = $derived(allExited(containers));
 
-    const sources = {
-        forgejo: "Forgejo",
-        github: "GitHub",
-        git: "Git",
-        docker: "Docker",
-    };
-
     // Deployments from before metadata existed fall back to the resource's current source.
     function via(deployment: Deployment) {
         const source =
             deployment.metadata?.source ??
             (resource.gitBranch ? "git" : "docker");
 
-        return sources[source];
+        return sourceLabels[source];
     }
 
     type Tone = "success" | "info" | "error" | "secondary";

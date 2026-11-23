@@ -337,7 +337,6 @@ export const resourceGraphRouter = {
                 .where(
                     and(
                         eq(projects.id, input.projectId),
-                        sql`${projects.isInternal} is not true`,
                         eq(clusters.organizationId, organizationId),
                     ),
                 )

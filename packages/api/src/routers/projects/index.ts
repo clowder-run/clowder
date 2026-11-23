@@ -1,5 +1,6 @@
 import { ORPCError } from "@orpc/server";
 import {
+    clusterMonitoring,
     clusters,
     deployments,
     projectFavorites,
@@ -149,9 +150,12 @@ export const projectsRouter = {
                     updatedAt: projects.updatedAt,
                     isInternal: projects.isInternal,
                     canvasLayout: projects.canvasLayout,
+                    // The monitoring stack Clowder versions itself; nothing else is locked.
+                    managedResourceId: clusterMonitoring.resourceId,
                 })
                 .from(projects)
                 .innerJoin(clusters, eq(projects.clusterId, clusters.id))
+                .leftJoin(clusterMonitoring, eq(clusterMonitoring.projectId, projects.id))
                 .where(
                     and(
                         eq(projects.id, input.projectId),

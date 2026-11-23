@@ -3,7 +3,7 @@ services:
         build:
             dockerfile: apps/docs/Dockerfile
             context: ../..
-        image: pkg.bar/clowder-docs:latest
+        image: pkg.bar/clowder-docs
         pull_policy: always
         x-ports:
             - clowder.run:80/https

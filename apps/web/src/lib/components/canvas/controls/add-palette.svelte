@@ -31,6 +31,7 @@
         keepPreviousData,
     } from "@tanstack/svelte-query";
     import {
+        parseAsBoolean,
         parseAsString,
         parseAsStringLiteral,
         useQueryState,
@@ -58,6 +59,7 @@
         type GitRepository,
     } from "./add-palette-entries";
     import AddPaletteItem from "./add-palette-item.svelte";
+    import SandboxDialog from "./sandbox-dialog.svelte";
     import {
         configNodeId,
         volumeNodeId,
@@ -98,6 +100,12 @@
     const configuringBucket = useQueryState(
         "addBucket",
         parseAsString.withOptions({ shallow: true, scroll: false }),
+    );
+
+    // The sandbox form, a dialog of its own: too many fields for the palette.
+    const sandbox = useQueryState(
+        "addSandbox",
+        parseAsBoolean.withOptions({ shallow: true, scroll: false }),
     );
 
     // The service a new volume is being attached to, `<resourceId>:<service>`: Railway then asks for
@@ -267,7 +275,7 @@
                 current === "database",
             );
 
-        return rootEntries(projectId, volumeTargets.length > 0);
+        return rootEntries(volumeTargets.length > 0);
     });
 
     const s3Connections = $derived(s3ConnectionsQuery.data ?? []);
@@ -616,7 +624,10 @@
 
         if ("page" in target) open(target.page);
         else if ("href" in target) void goto(target.href);
-        else if ("create" in target)
+        else if ("dialog" in target) {
+            open(null);
+            void sandbox.set(true);
+        } else if ("create" in target)
             void createResource(target.create);
         else if ("repository" in target)
             pickRepository(target.repository, null);
@@ -870,4 +881,15 @@
             {@render palette()}
         </CommandDialogPopup>
     </CommandDialog>
+{/if}
+
+{#if sandbox.current}
+    <SandboxDialog
+        {projectId}
+        oncreated={(resourceId) => {
+            void sandbox.set(null);
+            void showCreated(resourceId);
+        }}
+        onclose={() => void sandbox.set(null)}
+    />
 {/if}

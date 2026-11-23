@@ -14,12 +14,10 @@ import { Cause, Effect, Layer } from "effect";
 import { addMachine } from "./add-machine";
 import { createInitializeClusterHandler } from "./initialize-cluster";
 import { MONITORING_VERSION } from "./monitoring-compose";
-import { CADDY_FAILURE_MESSAGE, deployCaddy } from "./deploy-caddy";
 import { deployResource, RESOURCE_FAILURE_MESSAGE } from "./deploy-resource";
 import { runHealthCheck } from "./health-check";
 import {
     AddMachine,
-    DeployCaddy,
     DeployResource,
     HealthCheck,
     InitializeCluster,
@@ -158,16 +156,6 @@ function jobHandlersLive(db: Database, watchGitSources: GitWatcher) {
                 ),
             { concurrency: 4 },
         ),
-        DeployCaddy.toLayer(
-            ({ deploymentId }) =>
-                attempt(
-                    (signal) => deployCaddy(db, deploymentId, signal),
-                    // deployCaddy only throws CADDY_FAILURE_MESSAGE; never pass a raw cause.
-                    () => new Error(CADDY_FAILURE_MESSAGE),
-                ),
-            // One rollout per cluster is enforced when queueing; across clusters they are independent.
-            { concurrency: 4 },
-        ),
         ProvisionCluster.toLayer(
             ({ deploymentId }) =>
                 attempt(
@@ -276,8 +264,6 @@ async function recordBucketFailureAsync(db: Database, failure: Worker.JobFailure
 
 // The job's own message when an attempt failed without recording one.
 function deploymentFailureMessage(name: string) {
-    if (name === "DeployCaddy") return CADDY_FAILURE_MESSAGE;
-
     if (name === "ProvisionCluster") return "Setting up the cluster failed.";
 
     if (name === "AddMachine") return "Adding the machine failed.";
@@ -320,7 +306,6 @@ async function recordFailureAsync(db: Database, failure: Worker.JobFailure) {
 
     if (
         failure.name === "DeployResource" ||
-        failure.name === "DeployCaddy" ||
         failure.name === "ProvisionCluster" ||
         failure.name === "AddMachine" ||
         failure.name === "ProvisionSandbox" ||
@@ -396,7 +381,6 @@ function workerLive(db: Database) {
 
             if (
                 failure.name !== "DeployResource" &&
-                failure.name !== "DeployCaddy" &&
                 failure.name !== "ProvisionCluster" &&
                 failure.name !== "AddMachine" &&
                 failure.name !== "ProvisionSandbox" &&
@@ -469,7 +453,6 @@ export async function cancelDeploymentJob(
     name:
         | "InitializeCluster"
         | "DeployResource"
-        | "DeployCaddy"
         | "ProvisionCluster"
         | "AddMachine"
         | "ProvisionSandbox"
@@ -479,7 +462,6 @@ export async function cancelDeploymentJob(
         const job = {
             InitializeCluster,
             DeployResource,
-            DeployCaddy,
             ProvisionCluster,
             AddMachine,
             ProvisionSandbox,
@@ -505,7 +487,7 @@ async function pollOutboxAsync(db: Database) {
 
     const queued = await db.$client.query<{ deploymentId: string; name: string }>(
         `SELECT id AS "deploymentId", name FROM deployments
-         WHERE status = 'queued' AND name IN ('DeployResource', 'DeployCaddy', 'ProvisionCluster', 'AddMachine', 'ProvisionSandbox', 'DestroySandbox')`,
+         WHERE status = 'queued' AND name IN ('DeployResource', 'ProvisionCluster', 'AddMachine', 'ProvisionSandbox', 'DestroySandbox')`,
     );
 
     const buckets = await pendingBucketRequests(db);
@@ -516,7 +498,6 @@ async function pollOutboxAsync(db: Database) {
     return {
         initialization: initialization.rows,
         resources: queued.rows.filter((row) => row.name === "DeployResource"),
-        caddy: queued.rows.filter((row) => row.name === "DeployCaddy"),
         buckets,
         monitoring,
         provisions: queued.rows.filter((row) => row.name === "ProvisionCluster"),
@@ -531,16 +512,7 @@ async function pollOutboxAsync(db: Database) {
 export function pollInitializationOutbox(db: Database) {
     return Effect.promise(() => pollOutboxAsync(db)).pipe(
         Effect.flatMap(
-            ({
-                initialization,
-                resources,
-                caddy,
-                buckets,
-                monitoring,
-                provisions,
-                machines,
-                sandboxes,
-            }) =>
+            ({ initialization, resources, buckets, monitoring, provisions, machines, sandboxes }) =>
                 Effect.forEach(
                     [
                         ...initialization.map((row) =>
@@ -549,7 +521,6 @@ export function pollInitializationOutbox(db: Database) {
                         ...resources.map(({ deploymentId }) =>
                             DeployResource.enqueue({ deploymentId }),
                         ),
-                        ...caddy.map(({ deploymentId }) => DeployCaddy.enqueue({ deploymentId })),
                         ...buckets.map((row) =>
                             ReconcileBucket.enqueue({
                                 resourceId: row.resourceId,
@@ -581,7 +552,6 @@ export function pollInitializationOutbox(db: Database) {
 export { JobStoreLive, PgLive };
 
 export {
-    DeployCaddy,
     DeployResource,
     HealthCheck,
     InitializeCluster,

@@ -888,47 +888,6 @@
                 }
             }
         },
-        "/cluster/deployCaddy": {
-            "post": {
-                "operationId": "cluster.deployCaddy",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "clusterId": {
-                                        "type": "string",
-                                        "format": "uuid"
-                                    },
-                                    "image": {
-                                        "type": "string",
-                                        "minLength": 1,
-                                        "maxLength": 512
-                                    },
-                                    "caddyfile": {
-                                        "type": "string",
-                                        "maxLength": 262144
-                                    }
-                                },
-                                "required": [
-                                    "clusterId",
-                                    "image",
-                                    "caddyfile"
-                                ]
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "content": {}
-                    }
-                }
-            }
-        },
         "/cluster/getDomain": {
             "post": {
                 "operationId": "cluster.getDomain",

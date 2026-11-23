@@ -13,6 +13,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { stringify } from "yaml";
 import { followDeployment } from "./deploy-compose";
 import { bounded, machinesWithoutGeoip } from "./initialize-cluster";
+import { CADDY_SERVICE } from "./caddy";
 import { ALLOY_SERVICE } from "./monitoring-compose";
 import { isPrivateServerAddress } from "./server-address";
 import {
@@ -39,8 +40,6 @@ type Cluster = {
 
 // The global services Clowder itself runs on every machine.
 const SIDECAR_SERVICE = "sidecar";
-
-const CADDY_SERVICE = "caddy";
 
 // Like uc, which gives a new machine five minutes to join.
 const JOIN_TIMEOUT = 5 * 60_000;

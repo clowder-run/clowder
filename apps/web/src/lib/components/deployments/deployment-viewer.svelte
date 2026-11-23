@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { jobLabels } from "$lib/deployments/labels";
     import { downloadText } from "$lib/utils";
     import { goto } from "$app/navigation";
     import AddMachineActions from "$lib/components/clusters/add-machine-actions.svelte";
@@ -118,19 +119,10 @@
             : null,
     );
 
-    const jobTitles = new Map([
-        ["InitializeCluster", "Cluster initialization"],
-        ["DeployCaddy", "Caddy deployment"],
-        ["ProvisionCluster", "Cluster creation"],
-        ["AddMachine", "New machine"],
-        ["ProvisionSandbox", "New sandbox"],
-        ["DestroySandbox", "Sandbox removal"],
-    ]);
-
     const title = $derived(
         deployment?.name === "DeployResource"
             ? resourceLabel || "Resource deployment"
-            : (jobTitles.get(deployment?.name ?? "") ??
+            : (jobLabels.get(deployment?.name ?? "") ??
                   deployment?.name ??
                   "Deployment"),
     );

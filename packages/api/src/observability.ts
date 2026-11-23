@@ -77,16 +77,24 @@ export type ChartPoints = (typeof chartPoints)[number];
 
 export type MetricWindow = { start: number; end: number; step: number; duration: number };
 
-/** Align a range to the 15s scrape grid with at most `points` samples (like Grafana's maxDataPoints). */
+/** Alloy's scrape interval in internal/monitoring/compose.yaml; rate() windows span at least four. */
+const scrapeInterval = 30;
+
+/** Align a range to the scrape grid with at most `points` samples (like Grafana's maxDataPoints). */
 export function metricWindow(
     range: ObservabilityRange,
     points: ChartPoints = 120,
     nowSeconds = Date.now() / 1000,
 ): MetricWindow {
-    const now = Math.floor(nowSeconds / 15) * 15;
-    const end = range instanceof Object ? Math.min(now, Math.floor(range.to / 15) * 15) : now;
+    const grid = (seconds: number) => Math.floor(seconds / scrapeInterval) * scrapeInterval;
+    const now = grid(nowSeconds);
+    const end = range instanceof Object ? Math.min(now, grid(range.to)) : now;
     const duration = range instanceof Object ? Math.max(60, end - range.from) : ranges[range];
-    const step = Math.max(15, Math.ceil(duration / points / 15) * 15);
+
+    const step = Math.max(
+        scrapeInterval,
+        Math.ceil(duration / points / scrapeInterval) * scrapeInterval,
+    );
 
     return { start: end - Math.ceil(duration / step) * step, end, step, duration };
 }
@@ -137,7 +145,7 @@ export function volumeMetricQueries(
     const scope = `customer_id=${JSON.stringify(clusterId)}`;
     const deployed = (name: string) => (prefix ? `${prefix}-${name}` : name);
     const names = services.map((name) => promRegex(deployed(name))).join("|");
-    const window = `${Math.max(60, step * 2)}s`;
+    const window = `${Math.max(4 * scrapeInterval, step * 2)}s`;
 
     const rate = (metric: string) =>
         `label_replace(sum by (machine_id, container_label_uncloud_service_name, name) (rate(${metric}{${scope},container_label_uncloud_service_name=~${JSON.stringify(names)}}[${window}])), "container_label_uncloud_service_id", "$1", "container_label_uncloud_service_name", "(.*)")`;
@@ -186,7 +194,7 @@ export function postgresMetricQueries(
     const scope = `customer_id=${JSON.stringify(clusterId)},container_label_uncloud_service_id=~${JSON.stringify(serviceIds.join("|"))}`;
     // Template databases are never connected to and only add noise to sizes.
     const databases = `${scope},datname!~"template.*"`;
-    const window = `${Math.max(60, step * 2)}s`;
+    const window = `${Math.max(4 * scrapeInterval, step * 2)}s`;
 
     const rate = (metric: string) =>
         `sum by (machine_id) (rate(${metric}{${databases}}[${window}]))`;
@@ -233,7 +241,7 @@ export function mysqlMetricQueries(
     serviceIds: string[],
 ): Record<MysqlMetricName, string> {
     const scope = `customer_id=${JSON.stringify(clusterId)},container_label_uncloud_service_id=~${JSON.stringify(serviceIds.join("|"))}`;
-    const window = `${Math.max(60, step * 2)}s`;
+    const window = `${Math.max(4 * scrapeInterval, step * 2)}s`;
 
     const rate = (metric: string) => `sum by (machine_id) (rate(${metric}{${scope}}[${window}]))`;
 
@@ -249,7 +257,7 @@ export function mysqlMetricQueries(
 
 export function dnsMetricQueries(clusterId: string, step: number): Record<DnsMetricName, string> {
     const scope = `customer_id=${JSON.stringify(clusterId)},job="prometheus.scrape.uncloud"`;
-    const window = Math.max(60, step * 2);
+    const window = Math.max(4 * scrapeInterval, step * 2);
 
     return {
         dnsQueries: `sum by (machine_id) (rate(uncloud_dns_query_total{${scope}}[${window}s]))`,
@@ -398,7 +406,7 @@ export function metricQueries(
         ? `container_label_uncloud_service_id=~${JSON.stringify(serviceIds.join("|"))}`
         : 'container_label_uncloud_service_id!=""';
 
-    const window = `${Math.max(60, step * 2)}s`;
+    const window = `${Math.max(4 * scrapeInterval, step * 2)}s`;
     const host = (metric: string, extra = "") => `${metric}{${scope}${extra}}`;
 
     const rate = (metric: string, extra = "") =>
@@ -554,7 +562,7 @@ export function httpQueries(
     const names = routedHosts(hosts).flatMap(([, list]) => list);
 
     if (!names.length) return null;
-    const window = `${Math.max(60, step * 2)}s`;
+    const window = `${Math.max(4 * scrapeInterval, step * 2)}s`;
     const select = caddySelector(clusterId, names);
     const rate = (metric: string, extra?: string) => `rate(${select(metric, extra)}[${window}])`;
 

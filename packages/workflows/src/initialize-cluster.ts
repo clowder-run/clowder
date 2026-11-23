@@ -25,7 +25,6 @@ export { readSqlRows } from "./greptime";
 
 import { appendDeploymentLog } from "@clowder/db/deployments";
 import { deployCompose } from "./deploy-compose";
-import { enableCaddyMetrics } from "./deploy-caddy";
 
 export type DeployLogFn = (
     text: string,
@@ -438,15 +437,10 @@ export function createInitializeClusterHandler(
                         );
                         await setMonitoringVersion(db, clusterId, MONITORING_VERSION);
 
-                        // Caddy already pushes metrics once initialized; don't restart it again,
-                        // unless it still pushes to the collector from before the rename (version 4).
-                        if (!reconciling || deployedVersion < RENAMED_MONITORING_VERSION)
-                            await enableCaddyMetrics(
-                                db,
-                                uc,
-                                clusterId,
-                                (text) => log(text),
-                                bounded(signal, 30_000),
+                        // Clowder never restarts ingress on its own; the Ingress card warns too.
+                        if (reconciling && deployedVersion < RENAMED_MONITORING_VERSION)
+                            await log(
+                                "Caddy still pushes HTTP metrics to the collector's old name. Deploy the cluster's Caddy resource to record HTTP traffic again.",
                             );
 
                         return;

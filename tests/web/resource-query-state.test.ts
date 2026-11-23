@@ -52,6 +52,7 @@ function renderPage(component: typeof CreatePage, source: string, search = "") {
         name: "Project",
         clusterName: "Cluster",
         isInternal: false,
+        managedResourceId: null,
         description: null,
         clusterId: "cluster",
         canvasLayout: {},

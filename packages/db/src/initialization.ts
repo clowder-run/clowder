@@ -15,6 +15,36 @@ export async function getInitialization(db: Database, clusterId: string) {
     return cluster;
 }
 
+type Transaction = Pick<Database, "select" | "insert">;
+
+/**
+ * The cluster's one system-managed project, holding monitoring and Caddy. Call with the cluster
+ * row locked, so two callers never both create it.
+ */
+export async function ensureInternalProject(
+    tx: Transaction,
+    cluster: { id: string; name: string },
+) {
+    const [existing] = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.clusterId, cluster.id), eq(projects.isInternal, true)))
+        .limit(1);
+
+    if (existing) return existing.id;
+
+    const projectId = randomUUID();
+    await tx.insert(projects).values({
+        id: projectId,
+        clusterId: cluster.id,
+        name: `${cluster.name}-internal`,
+        isInternal: true,
+        description: "System-managed cluster services.",
+    });
+
+    return projectId;
+}
+
 export async function prepareMonitoring(
     db: Database,
     clusterId: string,
@@ -37,15 +67,8 @@ export async function prepareMonitoring(
             .where(eq(clusterMonitoring.clusterId, clusterId));
 
         if (existing) return existing;
-        const projectId = randomUUID();
+        const projectId = await ensureInternalProject(tx, cluster);
         const resourceId = randomUUID();
-        await tx.insert(projects).values({
-            id: projectId,
-            clusterId,
-            name: `${cluster.name}-internal`,
-            isInternal: true,
-            description: "System-managed cluster metrics and logs.",
-        });
         await tx.insert(resources).values({
             id: resourceId,
             projectId,

@@ -4,6 +4,7 @@
 @import "shadcn-svelte/tailwind.css";
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@regular-ppl/hitbox";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

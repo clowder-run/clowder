@@ -1,0 +1,39 @@
+####################################################################################################
+# The cluster's Caddy, deployed as a resource in its internal project.
+#
+# Uncloud's own caddy service (`uc caddy deploy`): Uncloud only treats a service named `caddy` as
+# ingress, and its `x-caddy` is the global Caddyfile. Clowder fills in both when it creates the
+# resource: a new cluster's Caddyfile has the `metrics` option HTTP traffic needs, and an adopted
+# cluster keeps its running Caddy's image, Caddyfile, extra ports, bind mounts and placement.
+####################################################################################################
+services:
+    caddy:
+        # 2.11 is the first release whose `metrics` option takes `otlp`.
+        image: caddy:2.11.9
+        environment:
+            # unix// is not a typo. Caddy uses network/address format, not a unix:// URL.
+            CADDY_ADMIN: unix//run/caddy/admin.sock
+            # Caddy pushes HTTP metrics to the nearest Alloy, which only runs once monitoring is
+            # set up. Until then the pushes fail without affecting traffic.
+            OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://nearest.clowder-monitoring-alloy.internal:4318/v1/metrics
+            OTEL_SERVICE_NAME: caddy
+            OTEL_METRIC_EXPORT_INTERVAL: "15000"
+        healthcheck:
+            test: curl -fsS -o /dev/null --unix-socket /run/caddy/admin.sock http://localhost/config/
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
+            start_interval: 1s
+        volumes:
+            - /var/lib/uncloud/caddy:/etc/caddy:ro
+            - /var/lib/uncloud/caddy:/data
+            - /run/uncloud/caddy:/run/caddy
+            # The daemon replaces the socket, so mount the directory rather than the file.
+            - /run/uncloud/api:/run/uncloud/api:ro
+        x-ports:
+            - 80:80@host
+            - 443:443@host
+            - 443:443/udp@host
+        deploy:
+            mode: global

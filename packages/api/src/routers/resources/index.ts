@@ -42,7 +42,7 @@ import { lockedComposeResource, resourceEditInput, resourceGitRouter } from "./g
 import { resourceDiscardRouter } from "./discard";
 import { resourceMetricsRouter } from "./metrics";
 import { resourcePostgresRouter } from "./postgres";
-import { assertProjectVisible, editableProject } from "./access";
+import { assertProjectVisible, editableResource, organizationProject } from "./access";
 import { resourceGroupsRouter } from "./groups";
 import { resourceTransferRouter } from "./transfer";
 import { gitText } from "../connections";
@@ -194,7 +194,8 @@ export const resourcesRouter = {
                 eq(resources.id, input.resourceId),
                 eq(resources.projectId, input.projectId),
                 inArray(resources.type, composeResourceTypes),
-                sql`${resources.projectId} in (${editableProject(db, organizationId, input.projectId)})`,
+                sql`${resources.projectId} in (${organizationProject(db, organizationId, input.projectId)})`,
+                editableResource,
             );
 
             const [resource] = await db
@@ -238,6 +239,20 @@ export const resourcesRouter = {
             }),
         )
         .handler(async ({ context: { db, organizationId }, input }) => {
+            if (input.prefixNames) {
+                const [caddy] = await db
+                    .select({ id: clusters.id })
+                    .from(clusters)
+                    .where(eq(clusters.caddyResourceId, input.resourceId))
+                    .limit(1);
+
+                // Uncloud only treats a service called `caddy` as ingress.
+                if (caddy)
+                    throw new ORPCError("BAD_REQUEST", {
+                        message: "The cluster's Caddy keeps its names unprefixed.",
+                    });
+            }
+
             const [resource] = await db
                 .update(resources)
                 .set({
@@ -248,7 +263,8 @@ export const resourcesRouter = {
                         eq(resources.id, input.resourceId),
                         eq(resources.projectId, input.projectId),
                         inArray(resources.type, composeResourceTypes),
-                        sql`${resources.projectId} in (${editableProject(db, organizationId, input.projectId)})`,
+                        sql`${resources.projectId} in (${organizationProject(db, organizationId, input.projectId)})`,
+                        editableResource,
                     ),
                 )
                 .returning();
@@ -286,7 +302,8 @@ export const resourcesRouter = {
                         eq(resources.id, input.resourceId),
                         eq(resources.projectId, input.projectId),
                         inArray(resources.type, composeResourceTypes),
-                        sql`${resources.projectId} in (${editableProject(db, organizationId, input.projectId)})`,
+                        sql`${resources.projectId} in (${organizationProject(db, organizationId, input.projectId)})`,
+                        editableResource,
                     ),
                 )
                 .returning();

@@ -22,6 +22,7 @@
         type Crumb,
     } from "./breadcrumb-trail.svelte";
     import { setHeaderActions } from "./header-actions";
+    import { sectionTitle } from "./nav-sections";
 
     import type { Snippet } from "svelte";
 
@@ -41,22 +42,7 @@
 
     setHeaderActions(headerActions);
 
-    const sectionTitles = [
-        ["/settings", "Settings"],
-        ["/observability", "Observability"],
-        ["/projects", "Projects"],
-        ["/clusters", "Clusters"],
-        ["/deployments", "Deployments"],
-        ["/templates", "Templates"],
-        ["/git", "Git"],
-        ["/s3", "S3 connections"],
-    ] as const;
-
-    const pageTitle = $derived(
-        sectionTitles.find(([prefix]) =>
-            page.url.pathname.startsWith(prefix),
-        )?.[1] ?? "Home",
-    );
+    const pageTitle = $derived(sectionTitle(page.url.pathname));
 
     const monitoringView = $derived(
         observabilityView(page.url.pathname),

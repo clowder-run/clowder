@@ -7,6 +7,8 @@
     let {
         value = $bindable(),
         items = [],
+        // Non-modal so opening a select doesn't lock page scroll and shift the layout.
+        modal = false,
         ...restProps
     }: Omit<
         ComponentProps<typeof SelectPrimitive.Root>,
@@ -20,5 +22,6 @@
 <SelectPrimitive.Root
     bind:value={value as never}
     {items}
+    {modal}
     {...restProps}
 />

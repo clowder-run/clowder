@@ -9,7 +9,8 @@ import { cancelDeployment } from "@clowder/db/deployments";
 import { organizationHasInfrastructure } from "@clowder/db/organizations";
 import { clusters, deploymentLogs, deployments } from "@clowder/db/schema/index";
 import * as uncloud from "@clowder/uncloud";
-import { parseCaddyComposeSpec } from "@clowder/workflows/deploy-caddy";
+import { caddyCompose, CLUSTER_STORAGE_CADDY } from "@clowder/workflows/caddy";
+import { withCaddyMetrics } from "@clowder/workflows/caddy-metrics";
 import { provisionCluster, provisioningCredentials } from "@clowder/workflows/provision-cluster";
 import { isAllowedServerAddress, isPrivateServerAddress } from "@clowder/workflows/server-address";
 import { and, eq, sql } from "drizzle-orm";
@@ -229,7 +230,9 @@ describe("cluster provisioning (PostgreSQL)", () => {
         return db
             .select()
             .from(deployments)
-            .where(and(eq(deployments.clusterId, clusterId), eq(deployments.name, "DeployCaddy")));
+            .where(
+                and(eq(deployments.clusterId, clusterId), eq(deployments.name, "DeployResource")),
+            );
     }
 
     async function lines(file: string) {
@@ -319,10 +322,15 @@ describe("cluster provisioning (PostgreSQL)", () => {
         expect(deployment.status).toBe("ready");
         expect(others).toEqual([]);
         expect(caddy?.status).toBe("queued");
-        expect(parseCaddyComposeSpec(caddy!.spec!)).toEqual({
-            image: "ghcr.io/unlabs-dev/caddy-uncloud:0.1.3",
-            caddyfile: "{\n\tstorage uncloud\n}\n",
-        });
+        expect(caddy?.spec).toBe(
+            caddyCompose(
+                withCaddyMetrics(CLUSTER_STORAGE_CADDY.caddyfile),
+                CLUSTER_STORAGE_CADDY.image,
+            ),
+        );
+
+        const cluster = await db.query.clusters.findFirst({ where: { id: clusterId } });
+        expect(caddy?.resourceId).toBe(cluster?.caddyResourceId);
     });
 
     it("refuses a cluster member without running uc on it", async () => {

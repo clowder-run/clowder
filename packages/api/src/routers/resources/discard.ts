@@ -12,6 +12,7 @@ import * as v from "valibot";
 import { organizationProcedure } from "../..";
 import { composeResourceTypes } from "../../databases";
 import { removeResources } from "../../resources/removal";
+import { editableResource } from "./access";
 
 export const resourceDiscardRouter = {
     /**
@@ -39,7 +40,6 @@ export const resourceDiscardRouter = {
                     .where(
                         and(
                             eq(projects.id, input.projectId),
-                            sql`${projects.isInternal} is not true`,
                             eq(clusters.organizationId, organizationId),
                         ),
                     )
@@ -54,6 +54,7 @@ export const resourceDiscardRouter = {
                         and(
                             inArray(resources.id, input.resourceIds),
                             eq(resources.projectId, input.projectId),
+                            editableResource,
                         ),
                     )
                     .for("update");

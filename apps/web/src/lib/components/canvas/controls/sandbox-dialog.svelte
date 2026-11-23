@@ -1,14 +1,20 @@
+<!-- Creates a sandbox without leaving the canvas. -->
 <script lang="ts">
-    import { goto } from "$app/navigation";
-    import { page } from "$app/state";
-    import { projectHref, resourceHref } from "$lib/api/hrefs";
+    import { orpc } from "$lib/api/orpc";
     import ConnectionField from "$lib/components/clusters/connection-field.svelte";
     import {
         Alert,
         AlertDescription,
     } from "$lib/components/ui/alert";
-    import { Badge } from "$lib/components/ui/badge";
     import { Button } from "$lib/components/ui/button";
+    import {
+        Dialog,
+        DialogContent,
+        DialogFooter,
+        DialogHeader,
+        DialogPanel,
+        DialogTitle,
+    } from "$lib/components/ui/dialog";
     import {
         Empty,
         EmptyContent,
@@ -20,12 +26,6 @@
         Field,
         FieldDescription,
     } from "$lib/components/ui/field";
-    import {
-        Frame,
-        FrameFooter,
-        FrameHeader,
-        FrameTitle,
-    } from "$lib/components/ui/frame";
     import {
         InputGroup,
         InputGroupAddon,
@@ -45,7 +45,6 @@
         ToggleGroup,
         ToggleGroupItem,
     } from "$lib/components/ui/toggle-group";
-    import { orpc, queryClient } from "$lib/api/orpc";
     import { randomName } from "$lib/random-name";
     import { downloadText } from "$lib/utils";
     import { sshKeyPair } from "@clowder/workflows/ssh-key";
@@ -58,14 +57,18 @@
         parseAsStringLiteral,
         useQueryStates,
     } from "nuqs-svelte";
-    import ArrowLeft from "phosphor-svelte/lib/ArrowLeftIcon";
     import ArrowsClockwise from "phosphor-svelte/lib/ArrowsClockwiseIcon";
     import Cube from "phosphor-svelte/lib/CubeIcon";
 
-    const projectId = $derived(page.params.projectId ?? "");
-
-    // The canvas lands here from its Add palette, so Back returns to the canvas.
-    const backHref = $derived(projectHref(projectId));
+    let {
+        projectId,
+        oncreated,
+        onclose,
+    }: {
+        projectId: string;
+        oncreated: (resourceId: string) => void;
+        onclose: () => void;
+    } = $props();
 
     const TTL_OPTIONS = [
         { value: "none", label: "No limit", seconds: undefined },
@@ -79,6 +82,7 @@
     const ANY = "any";
 
     // Everything but secrets lives in the URL, so a reload or a shared link keeps the form.
+    // Prefixed like `addSandbox`, since the canvas owns the other params.
     const fields = useQueryStates(
         {
             name: parseAsString,
@@ -95,13 +99,37 @@
             ]).withDefault("key"),
             keys: parseAsString.withDefault(""),
         },
-        { history: "replace", shallow: true, scroll: false },
+        {
+            history: "replace",
+            shallow: true,
+            scroll: false,
+            urlKeys: {
+                name: "sandboxName",
+                image: "sandboxImage",
+                cluster: "sandboxCluster",
+                machine: "sandboxMachine",
+                volume: "sandboxVolume",
+                ttl: "sandboxTtl",
+                access: "sandboxAccess",
+                keys: "sandboxKeys",
+            },
+        },
     );
 
-    // Suggested until one is typed or rolled, like the bucket page's name.
+    // Suggested until one is typed or rolled.
     const suggested = randomName();
 
     const name = $derived(fields.name.current ?? suggested);
+
+    const machine = $derived(fields.machine.current);
+
+    const volume = $derived(fields.volume.current);
+
+    const ttl = $derived(fields.ttl.current);
+
+    const access = $derived(fields.access.current);
+
+    const keys = $derived(fields.keys.current);
 
     // Secrets stay in memory, never in the URL.
     let privateKey = $state("");
@@ -111,7 +139,6 @@
     const projectQuery = createQuery(() =>
         orpc.projects.getProject.queryOptions({
             input: { projectId },
-            enabled: Boolean(projectId),
         }),
     );
 
@@ -182,11 +209,11 @@
 
     const volumeItems = $derived([
         { value: ANY, label: "New volume" },
-        ...(volumesQuery.data ?? []).map((volume) => ({
-            value: volume.id,
-            label: volume.machine
-                ? `${volume.name} on ${volume.machine}`
-                : volume.name,
+        ...(volumesQuery.data ?? []).map((item) => ({
+            value: item.id,
+            label: item.machine
+                ? `${item.name} on ${item.machine}`
+                : item.name,
         })),
     ]);
 
@@ -197,22 +224,19 @@
 
     const createState = createMutation(() =>
         orpc.sandboxes.create.mutationOptions({
-            onSuccess: async ({ id }) => {
-                await queryClient.invalidateQueries({
-                    queryKey: orpc.resources.listResources.queryKey({
-                        input: { projectId },
-                    }),
-                });
-                await goto(resourceHref(projectId, id));
+            onSuccess: ({ id }) => {
+                void fields.set(null);
+                oncreated(id);
             },
         }),
     );
 
-    const login = $derived(
-        fields.access.current === "key"
-            ? fields.keys.current.trim()
-            : password,
-    );
+    function close() {
+        void fields.set(null);
+        onclose();
+    }
+
+    const login = $derived(access === "key" ? keys.trim() : password);
 
     const canSubmit = $derived(
         Boolean(
@@ -246,35 +270,21 @@
 
         if (!canSubmit) return;
 
-        const key = fields.access.current === "key";
-
         createState.mutate({
             projectId,
             slug: name.trim(),
             imageId,
             clusterId,
-            machine:
-                fields.machine.current === ANY
-                    ? undefined
-                    : fields.machine.current,
-            volumeId:
-                fields.volume.current === ANY
-                    ? undefined
-                    : fields.volume.current,
-            authorizedKeys: key ? fields.keys.current : undefined,
-            password: key ? undefined : password,
+            machine: machine === ANY ? undefined : machine,
+            volumeId: volume === ANY ? undefined : volume,
+            authorizedKeys: access === "key" ? keys : undefined,
+            password: access === "key" ? undefined : password,
             ttlSeconds: TTL_OPTIONS.find(
-                (option) => option.value === fields.ttl.current,
+                (option) => option.value === ttl,
             )?.seconds,
         });
     }
 </script>
-
-<svelte:head>
-    <title>
-        New sandbox / {projectQuery.data?.name ?? "Project"} / Clowder
-    </title>
-</svelte:head>
 
 {#snippet select(
     id: string,
@@ -302,101 +312,63 @@
     </Select>
 {/snippet}
 
-<div class="flex w-full flex-col gap-6 pt-6">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-        <div class="flex min-w-0 items-start gap-3">
-            <Button
-                variant="ghost"
-                size="icon-sm"
-                href={backHref}
-                aria-label="Back to the canvas"
-            >
-                <ArrowLeft aria-hidden="true" />
-            </Button>
-            <Cube
-                class="size-14 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-            />
-            <div class="min-w-0">
-                <h1 class="text-2xl font-semibold">New sandbox</h1>
-                <p class="mt-1 text-sm text-muted-foreground">
-                    A microVM on one of your clusters, reachable over
-                    SSH.
-                </p>
-            </div>
-        </div>
-        <Badge variant="secondary" size="lg">Sandbox</Badge>
-    </div>
-
-    {#if projectQuery.data?.isInternal}
-        <Alert variant="info">
-            <AlertDescription>
-                Clowder manages this project's internal services. New
-                resources can't be added here.
-            </AlertDescription>
-        </Alert>
-    {:else if imagesQuery.isError}
-        <Alert variant="error">
-            <AlertDescription>
-                Unable to load sandbox images: {imagesQuery.error
-                    .message}
-            </AlertDescription>
-        </Alert>
-    {:else if imagesQuery.isPending}
-        <Skeleton
-            loading
-            label="Loading sandbox options"
-            class="mx-auto w-full max-w-2xl"
-        >
-            <Frame>
-                <FrameHeader>
-                    <FrameTitle class="text-base">
-                        <h2>Sandbox</h2>
-                    </FrameTitle>
-                </FrameHeader>
-                <div class="space-y-4 px-5 py-4">
-                    {#each ["Name", "Image", "Cluster", "Access"] as label (label)}
-                        <Field>
-                            <Label>{label}</Label>
-                            <InputGroup>
-                                <InputGroupInput readonly />
-                            </InputGroup>
-                        </Field>
-                    {/each}
-                </div>
-            </Frame>
-        </Skeleton>
-    {:else if images.length === 0}
-        <Empty class="rounded-xl border border-dashed border-border">
-            <EmptyHeader>
-                <EmptyMedia variant="icon">
-                    <Cube aria-hidden="true" />
-                </EmptyMedia>
-                <EmptyTitle>No sandbox images</EmptyTitle>
-            </EmptyHeader>
-            <EmptyContent>
-                <Button
-                    size="sm"
-                    href="/settings?section=sandbox-images"
+<Dialog
+    bind:open={
+        () => true,
+        (open) => {
+            if (!open && !createState.isPending) close();
+        }
+    }
+>
+    <DialogContent class="sm:max-w-xl">
+        <DialogHeader>
+            <DialogTitle>New sandbox</DialogTitle>
+        </DialogHeader>
+        <DialogPanel>
+            {#if imagesQuery.isError}
+                <Alert variant="error">
+                    <AlertDescription>
+                        Unable to load sandbox images: {imagesQuery
+                            .error.message}
+                    </AlertDescription>
+                </Alert>
+            {:else if imagesQuery.isPending}
+                <Skeleton loading label="Loading sandbox options">
+                    <div class="space-y-4">
+                        {#each ["Name", "Image", "Cluster", "Access"] as label (label)}
+                            <Field>
+                                <Label>{label}</Label>
+                                <InputGroup>
+                                    <InputGroupInput readonly />
+                                </InputGroup>
+                            </Field>
+                        {/each}
+                    </div>
+                </Skeleton>
+            {:else if images.length === 0}
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                            <Cube aria-hidden="true" />
+                        </EmptyMedia>
+                        <EmptyTitle>No sandbox images</EmptyTitle>
+                    </EmptyHeader>
+                    <EmptyContent>
+                        <Button
+                            size="sm"
+                            href="/settings?section=sandbox-images"
+                        >
+                            Add an image
+                        </Button>
+                    </EmptyContent>
+                </Empty>
+            {:else}
+                <form
+                    id="canvas-sandbox-form"
+                    class="space-y-4"
+                    aria-busy={createState.isPending}
+                    onsubmit={create}
                 >
-                    Add an image
-                </Button>
-            </EmptyContent>
-        </Empty>
-    {:else}
-        <form
-            method="POST"
-            onsubmit={create}
-            aria-busy={createState.isPending}
-            class="mx-auto w-full max-w-2xl"
-        >
-            <Frame role="region" aria-labelledby="sandbox-heading">
-                <FrameHeader>
-                    <FrameTitle class="text-base">
-                        <h2 id="sandbox-heading">Sandbox</h2>
-                    </FrameTitle>
-                </FrameHeader>
-                <div class="space-y-4 px-5 py-4">
                     {#if createState.isError}
                         <Alert variant="error" role="alert">
                             <AlertDescription>
@@ -411,10 +383,11 @@
                         <InputGroup>
                             <InputGroupInput
                                 id="sandbox-name"
-                                value={name}
-                                oninput={(event) =>
-                                    (fields.name.current =
-                                        event.currentTarget.value)}
+                                bind:value={
+                                    () => name,
+                                    (value) =>
+                                        (fields.name.current = value)
+                                }
                                 class="font-mono"
                                 autocomplete="off"
                                 spellcheck="false"
@@ -469,7 +442,7 @@
                             </Label>
                             {@render select(
                                 "sandbox-machine",
-                                fields.machine.current,
+                                machine,
                                 machineItems,
                                 (value) =>
                                     (fields.machine.current =
@@ -486,7 +459,7 @@
                             <Label for="sandbox-volume">Volume</Label>
                             {@render select(
                                 "sandbox-volume",
-                                fields.volume.current,
+                                volume,
                                 volumeItems,
                                 (value) =>
                                     (fields.volume.current =
@@ -500,7 +473,7 @@
                             </Label>
                             {@render select(
                                 "sandbox-ttl",
-                                fields.ttl.current,
+                                ttl,
                                 ttlItems,
                                 (value) =>
                                     (fields.ttl.current =
@@ -522,7 +495,7 @@
                                 variant="outline"
                                 size="sm"
                                 aria-label="Access"
-                                value={[fields.access.current]}
+                                value={[access]}
                                 onValueChange={(next) => {
                                     if (
                                         next[0] === "key" ||
@@ -540,7 +513,7 @@
                                 </ToggleGroupItem>
                             </ToggleGroup>
                         </div>
-                        {#if fields.access.current === "key"}
+                        {#if access === "key"}
                             <Textarea
                                 id="sandbox-keys"
                                 aria-label="Public keys"
@@ -590,7 +563,7 @@
                             </FieldDescription>
                         {/if}
                     </Field>
-                    {#if fields.access.current === "key" && privateKey}
+                    {#if access === "key" && privateKey}
                         <ConnectionField
                             label="Private key"
                             value={privateKey}
@@ -615,26 +588,25 @@
                             </Button>
                         </div>
                     {/if}
-                </div>
-                <FrameFooter
-                    class="mt-auto flex flex-wrap items-center justify-end gap-2 px-4 py-3"
-                >
-                    <Button
-                        variant="outline"
-                        href={backHref}
-                        disabled={createState.isPending}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="submit"
-                        loading={createState.isPending}
-                        disabled={!canSubmit}
-                    >
-                        Create sandbox
-                    </Button>
-                </FrameFooter>
-            </Frame>
-        </form>
-    {/if}
-</div>
+                </form>
+            {/if}
+        </DialogPanel>
+        <DialogFooter>
+            <Button
+                variant="outline"
+                onclick={close}
+                disabled={createState.isPending}
+            >
+                Cancel
+            </Button>
+            <Button
+                type="submit"
+                form="canvas-sandbox-form"
+                loading={createState.isPending}
+                disabled={!canSubmit}
+            >
+                Create sandbox
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>

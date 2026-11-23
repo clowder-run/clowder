@@ -235,7 +235,6 @@ describe("variable references API (PostgreSQL)", () => {
 
         it.each([
             ["another organization", () => foreignProjectId],
-            ["an internal project", () => internalProjectId],
             ["a missing project", () => randomUUID()],
         ])("refuses %s", async (_, project) => {
             await expect(

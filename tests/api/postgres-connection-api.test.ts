@@ -275,7 +275,7 @@ describe("external connection API", () => {
         expect(saved!.draftSpec).toBe(draft);
     });
 
-    it("rejects mismatched clusters, internal resources and non-PostgreSQL resources", async () => {
+    it("rejects mismatched clusters, managed resources and non-PostgreSQL resources", async () => {
         const input = await resource();
         const otherCluster = randomUUID();
         await db.insert(clusters).values({
@@ -292,11 +292,18 @@ describe("external connection API", () => {
                 { context },
             ),
         ).rejects.toMatchObject({ code: "NOT_FOUND" });
-        await db.update(projects).set({ isInternal: true }).where(eq(projects.id, projectId));
+        // Only the monitoring resource is locked; Caddy, also internal, is editable.
+        await db.$client.query(
+            `INSERT INTO cluster_monitoring (cluster_id, project_id, resource_id, encrypted_password)
+             SELECT cluster_id, id, $2, 'unused' FROM projects WHERE id = $1`,
+            [input.projectId, input.resourceId],
+        );
         await expect(
             call(resourcesRouter.enableExternalConnection, input, { context }),
         ).rejects.toMatchObject({ code: "NOT_FOUND" });
-        await db.update(projects).set({ isInternal: false }).where(eq(projects.id, projectId));
+        await db.$client.query("DELETE FROM cluster_monitoring WHERE resource_id = $1", [
+            input.resourceId,
+        ]);
         await db
             .update(resources)
             .set({ settings: { engine: "mongodb" } })

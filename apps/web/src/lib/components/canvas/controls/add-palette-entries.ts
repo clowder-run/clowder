@@ -70,7 +70,8 @@ export type Entry = {
         | { repository: GitRepository }
         | { template: Template }
         | { bucket: { connectionId: string } }
-        | { volumeService: VolumeTarget };
+        | { volumeService: VolumeTarget }
+        | { dialog: "sandbox" };
 };
 
 export const pageTitles: Record<AddPage, string> = {
@@ -112,7 +113,7 @@ function pageEntry(id: AddPage, label: string, icon: Component): Entry {
 }
 
 /** The first page. Volumes and configs need a service to attach to. */
-export function rootEntries(projectId: string, hasVolumeTargets: boolean): Entry[] {
+export function rootEntries(hasVolumeTargets: boolean): Entry[] {
     return [
         pageEntry("git", "Git Repository", GitBranch),
         pageEntry("database", "Database", Database),
@@ -129,7 +130,7 @@ export function rootEntries(projectId: string, hasVolumeTargets: boolean): Entry
             logo: null,
             icon: Box,
             provider: undefined,
-            target: { href: `/projects/${projectId}/create/sandbox` },
+            target: { dialog: "sandbox" },
         },
         {
             id: "empty",

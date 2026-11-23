@@ -15,8 +15,6 @@ export type CaddyConfigs = Schemas["CaddyConfigsResponse"];
 
 export type CaddySettings = Schemas["CaddySettingsResponse"];
 
-export type DeployCaddyRequest = Schemas["DeployCaddyRequest"];
-
 export type ClusterDiagnostics = Schemas["ClusterDiagnosticsResponse"];
 
 export type ClusterLink = Schemas["ClusterLinkResponse"];

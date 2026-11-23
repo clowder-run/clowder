@@ -62,6 +62,7 @@
     import Braces from "phosphor-svelte/lib/BracketsCurlyIcon";
     import Zap from "phosphor-svelte/lib/LightningIcon";
     import type { Snippet } from "svelte";
+    import { parseAsBoolean, useQueryState } from "nuqs-svelte";
     import type { AddPage } from "./add-palette.svelte";
     import { getCanvasActions } from "../context";
     import { parseNodeId } from "../graph";
@@ -93,6 +94,12 @@
     } = $props();
 
     const create = $derived(`/projects/${projectId}/create`);
+
+    // Opens the add palette's sandbox dialog, which reads the same param.
+    const addSandbox = useQueryState(
+        "addSandbox",
+        parseAsBoolean.withOptions({ shallow: true, scroll: false }),
+    );
 
     const resourceId = $derived(
         target?.kind === "node"
@@ -428,7 +435,7 @@
                 </ContextMenuItem>
 
                 <ContextMenuItem
-                    onclick={() => void goto(`${create}/sandbox`)}
+                    onclick={() => void addSandbox.set(true)}
                 >
                     <Cube aria-hidden="true" />
                     Sandbox

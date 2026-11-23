@@ -112,7 +112,6 @@
                 : "")}
     >
         <span class="truncate font-semibold">{user.name}</span>
-        <span class="truncate text-xs">{user.email}</span>
     </div>
 {/snippet}
 
@@ -126,7 +125,7 @@
         aria-label={pending
             ? "Logging out"
             : `Account menu for ${user.name}`}
-        title={`${user.name} (${user.email})`}
+        title={`${user.name}`}
     >
         {@render identity(true)}
         <ChevronsUpDown

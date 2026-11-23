@@ -1709,22 +1709,24 @@ describe("Git connections/resources (PostgreSQL)", () => {
         expectNoGitIO();
     });
 
-    it.each(["foreign", "mismatched", "internal"] as const)(
+    it.each(["foreign", "mismatched", "managed"] as const)(
         "blocks every resource Git operation for %s project/resource IDs",
         async (kind) => {
             const context = adminContext;
 
-            if (kind === "internal")
-                await db
-                    .update(projects)
-                    .set({ isInternal: true })
-                    .where(eq(projects.id, projectId));
+            // Clowder manages the monitoring resource itself; other internal resources are editable.
+            if (kind === "managed")
+                await db.$client.query(
+                    `INSERT INTO cluster_monitoring (cluster_id, project_id, resource_id, encrypted_password)
+                     SELECT cluster_id, id, $2, 'unused' FROM projects WHERE id = $1`,
+                    [projectId, resourceId],
+                );
 
             const input = target();
 
             if (kind === "foreign") input.projectId = foreignProjectId;
 
-            if (kind !== "internal") input.resourceId = foreignResourceId;
+            if (kind !== "managed") input.resourceId = foreignResourceId;
 
             const before = await storedResource();
 
@@ -1752,10 +1754,16 @@ describe("Git connections/resources (PostgreSQL)", () => {
                     ),
             ];
 
-            for (const action of actions)
-                await expect(action()).rejects.toMatchObject({ code: "NOT_FOUND" });
-            expect(await storedResource()).toEqual(before);
-            expectNoGitIO();
+            try {
+                for (const action of actions)
+                    await expect(action()).rejects.toMatchObject({ code: "NOT_FOUND" });
+                expect(await storedResource()).toEqual(before);
+                expectNoGitIO();
+            } finally {
+                await db.$client.query("DELETE FROM cluster_monitoring WHERE resource_id = $1", [
+                    resourceId,
+                ]);
+            }
         },
     );
 

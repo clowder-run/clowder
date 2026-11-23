@@ -16,7 +16,7 @@ it("scopes DNS rates and scrape health to the cluster's Uncloud targets", () => 
     expect(queries.dnsAvailability).toBe(
         'min by (machine_id) (min_over_time(up{customer_id="cluster-id",job="prometheus.scrape.uncloud"}[120s]))',
     );
-    expect(dnsMetricQueries("cluster-id", 15).dnsQueries).toContain("[60s]");
+    expect(dnsMetricQueries("cluster-id", 15).dnsQueries).toContain("[120s]");
 });
 
 it("keeps failed scrapes and missing intervals distinct from successful scrapes", () => {
@@ -102,7 +102,7 @@ it("scopes Postgres exporter metrics to the resource's services and skips templa
     expect(queries.postgresMaxConnections).toBe(
         `max by (machine_id) (pg_settings_max_connections{${scope}})`,
     );
-    expect(queries.postgresTransactions).toContain("[60s]");
+    expect(queries.postgresTransactions).toContain("[120s]");
 });
 
 it("scopes MySQL exporter metrics to the resource's services", () => {
@@ -117,5 +117,5 @@ it("scopes MySQL exporter metrics to the resource's services", () => {
     expect(queries.mysqlSize).toBe(
         `sum by (machine_id) (mysql_info_schema_schema_size_bytes{${scope}})`,
     );
-    expect(queries.mysqlQueries).toContain("[60s]");
+    expect(queries.mysqlQueries).toContain("[120s]");
 });

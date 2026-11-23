@@ -37,6 +37,7 @@
         "@orpc/openapi": "catalog:",
         "@orpc/server": "catalog:",
         "@orpc/tanstack-query": "catalog:",
+        "@regular-ppl/hitbox": "^0.1.0",
         "@shardsui/svelte": "0.1.0-beta.0",
         "@tanstack/charts": "^1.0.0",
         "@tanstack/svelte-query": "^6.1.48",

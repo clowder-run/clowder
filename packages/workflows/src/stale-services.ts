@@ -1,9 +1,10 @@
 import type { Database } from "@clowder/db";
 import { formatComposeFile } from "./compose";
+import { CADDY_SERVICE } from "./caddy";
 import { ALLOY_SERVICE, GREPTIME_SERVICE } from "./monitoring-compose";
 
 /** Cluster services Clowder runs itself; no resource deploy may ever remove them. */
-const RESERVED_SERVICES = ["caddy", GREPTIME_SERVICE, ALLOY_SERVICE];
+const RESERVED_SERVICES = [CADDY_SERVICE, GREPTIME_SERVICE, ALLOY_SERVICE];
 
 type Snapshot = { spec: string | null; prefix: string | null };
 

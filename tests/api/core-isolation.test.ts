@@ -1035,30 +1035,16 @@ describe("core project and resource isolation (PostgreSQL)", () => {
         },
         { label: "missing project", projectId: randomUUID(), resourceId },
         { label: "missing resource", projectId, resourceId: randomUUID() },
-        // Internal projects can be read; only changing them is refused.
-        {
-            label: "internal project",
-            projectId: internalProjectId,
-            resourceId: internalResourceId,
-            readable: true,
-        },
+        // Internal resources are covered under "internal projects": only monitoring is locked.
     ])("$label", (input) => {
-        it.each(
-            (
-                [
-                    "getResource",
-                    "getFormattedCompose",
-                    "getContainers",
-                    "updateSettings",
-                    "updateVariables",
-                    "updateDetails",
-                ] as const
-            ).filter(
-                (operation) =>
-                    !("readable" in input) ||
-                    (operation !== "getResource" && operation !== "getContainers"),
-            ),
-        )("denies %s without writes or external IO", async (operation) => {
+        it.each([
+            "getResource",
+            "getFormattedCompose",
+            "getContainers",
+            "updateSettings",
+            "updateVariables",
+            "updateDetails",
+        ] as const)("denies %s without writes or external IO", async (operation) => {
             const before = await db.select().from(resources).orderBy(asc(resources.id));
             await expect(
                 client[operation]({
@@ -1199,28 +1185,111 @@ describe("core project and resource isolation (PostgreSQL)", () => {
             }
         });
 
-        it.each([
-            "updateSettings",
-            "updateVariables",
-            "updateDetails",
-            "updateComposeSpec",
-            "createResource",
-        ] as const)("denies %s on internal resources without writes", async (operation) => {
-            const before = await db.select().from(resources).orderBy(asc(resources.id));
-            await expect(
-                client[operation]({
+        // Caddy lives here too and is edited like any resource; only monitoring is locked.
+        it("edits an internal resource Clowder does not manage", async () => {
+            const before = await storedResource(internalResourceId);
+
+            try {
+                await client.updateDetails({
                     projectId: internalProjectId,
                     resourceId: internalResourceId,
-                    prefixNames: false,
-                    env: "INJECTED=1",
-                    name: "Injected",
-                    spec: "services: {}\n",
-                    expectedSpec: null,
-                    expectedSource: null,
-                }),
+                    name: "Caddy",
+                });
+
+                expect((await storedResource(internalResourceId)).name).toBe("Caddy");
+            } finally {
+                await db
+                    .update(resources)
+                    .set({ name: before.name, description: before.description, icon: before.icon })
+                    .where(eq(resources.id, internalResourceId));
+            }
+        });
+
+        it("refuses name prefixes on the cluster's Caddy", async () => {
+            await db
+                .update(clusters)
+                .set({ caddyResourceId: internalResourceId })
+                .where(eq(clusters.id, clusterId));
+
+            try {
+                const before = await storedResource(internalResourceId);
+
+                await expect(
+                    client.updateSettings({
+                        projectId: internalProjectId,
+                        resourceId: internalResourceId,
+                        prefixNames: true,
+                    }),
+                ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+                expect(await storedResource(internalResourceId)).toEqual(before);
+            } finally {
+                await db
+                    .update(clusters)
+                    .set({ caddyResourceId: null })
+                    .where(eq(clusters.id, clusterId));
+            }
+        });
+
+        it("denies creating resources in the internal project", async () => {
+            const before = await db.select().from(resources).orderBy(asc(resources.id));
+
+            await expect(
+                client.createResource({ projectId: internalProjectId, name: "Injected" }),
             ).rejects.toMatchObject({ code: "NOT_FOUND" });
             expect(await db.select().from(resources).orderBy(asc(resources.id))).toEqual(before);
-            expect(fetch).not.toHaveBeenCalled();
+        });
+
+        describe("the monitoring resource", () => {
+            beforeEach(async () => {
+                await db.insert(clusterMonitoring).values({
+                    clusterId,
+                    projectId: internalProjectId,
+                    resourceId: internalResourceId,
+                    encryptedPassword: "unused",
+                });
+            });
+
+            afterEach(async () => {
+                await db
+                    .delete(clusterMonitoring)
+                    .where(eq(clusterMonitoring.clusterId, clusterId));
+            });
+
+            it("is the project's managed resource", async () => {
+                expect(
+                    await call(
+                        projectsRouter.getProject,
+                        { projectId: internalProjectId },
+                        { context },
+                    ),
+                ).toMatchObject({ managedResourceId: internalResourceId });
+            });
+
+            it.each([
+                "updateSettings",
+                "updateVariables",
+                "updateDetails",
+                "updateComposeSpec",
+            ] as const)("denies %s without writes", async (operation) => {
+                const before = await db.select().from(resources).orderBy(asc(resources.id));
+
+                await expect(
+                    client[operation]({
+                        projectId: internalProjectId,
+                        resourceId: internalResourceId,
+                        prefixNames: false,
+                        env: "INJECTED=1",
+                        name: "Injected",
+                        spec: "services: {}\n",
+                        expectedSpec: null,
+                        expectedSource: null,
+                    }),
+                ).rejects.toMatchObject({ code: "NOT_FOUND" });
+                expect(await db.select().from(resources).orderBy(asc(resources.id))).toEqual(
+                    before,
+                );
+                expect(fetch).not.toHaveBeenCalled();
+            });
         });
     });
 

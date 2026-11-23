@@ -49,7 +49,7 @@ const databaseName = `observability_${randomUUID().replaceAll("-", "")}`;
 
 const secret = "observability-test-secret-at-least-32-characters";
 
-const end = Math.floor(Date.now() / 1000 / 15) * 15;
+const end = Math.floor(Date.now() / 1000 / 30) * 30;
 
 let admin: ReturnType<typeof createDb>;
 
@@ -400,14 +400,14 @@ it("queries real GreptimeDB through the private transport, showing percent CPU a
         points: expect.arrayContaining([{ time: end * 1000, value: 190 }]),
     });
     expect(result.metrics.networkIn?.[0]?.points.at(-1)?.value).toBeCloseTo(1000);
-    expect(result.step).toBe(15);
+    expect(result.step).toBe(30);
     expect(result.end).toBe(end);
-    expect(result.metrics.cpu?.[0]?.points).toHaveLength(61);
+    expect(result.metrics.cpu?.[0]?.points).toHaveLength(31);
 
     for (const name of ["disk", "diskTotal"] as const) {
-        expect(result.metrics[name]?.[0]?.points).toHaveLength(61);
+        expect(result.metrics[name]?.[0]?.points).toHaveLength(31);
         expect(
-            result.metrics[name]?.[0]?.points.slice(-9).every((point) => point.value !== null),
+            result.metrics[name]?.[0]?.points.slice(-5).every((point) => point.value !== null),
         ).toBe(true);
     }
 
@@ -451,9 +451,9 @@ it("queries real GreptimeDB through the private transport, showing percent CPU a
     expect(week.end - week.start).toBeGreaterThanOrEqual(604800);
     expect(week.series[0]?.values.length).toBeLessThanOrEqual(121);
     // Stale-while-revalidate: the next window serves the previous one while a refresh runs.
-    vi.spyOn(Date, "now").mockReturnValue((end + 15) * 1000);
+    vi.spyOn(Date, "now").mockReturnValue((end + 30) * 1000);
     await expect(metric("cpu", "7d")).resolves.toEqual(week);
-    await vi.waitFor(async () => expect((await metric("cpu", "7d")).end).toBe(end + 15));
+    await vi.waitFor(async () => expect((await metric("cpu", "7d")).end).toBe(end + 30));
     await expect(metric("cpu", { from: end, to: end + 30 })).rejects.toMatchObject({
         code: "BAD_REQUEST",
     });
@@ -466,10 +466,10 @@ it("queries real GreptimeDB through the private transport, showing percent CPU a
         );
 
     // Scoped requests chart the whole window instead of the table's latest-only sample.
-    expect((await scoped(["web-id"])).series[0]?.values).toHaveLength(61);
+    expect((await scoped(["web-id"])).series[0]?.values).toHaveLength(31);
     // Percent charts divide by capacity at every sample, so one latest sample would leave them blank.
-    expect((await metric("cores", range)).series[0]?.values).toHaveLength(61);
-    expect((await metric("memoryTotal", range)).series[0]?.values).toHaveLength(61);
+    expect((await metric("cores", range)).series[0]?.values).toHaveLength(31);
+    expect((await metric("memoryTotal", range)).series[0]?.values).toHaveLength(31);
     await expect(scoped(["other-id"])).resolves.toMatchObject({ series: [] });
     await expect(scoped(['web-id"}) or vector(1'])).rejects.toMatchObject({ code: "BAD_REQUEST" });
 

@@ -36,7 +36,7 @@
         services,
         draftCompose,
         env,
-        isInternal,
+        readOnly,
         savingDraft,
         saveDraft,
         shows,
@@ -45,7 +45,7 @@
         services: CanvasService[];
         draftCompose: string;
         env: string;
-        isInternal: boolean;
+        readOnly: boolean;
         savingDraft: boolean;
         /** Resolves to the error message, or null once saved. */
         saveDraft: (compose: string) => Promise<string | null>;
@@ -74,7 +74,7 @@
     let ingressError = $state("");
 
     const canEditIngress = $derived(
-        !isInternal && ingress !== null && !savingDraft,
+        !readOnly && ingress !== null && !savingDraft,
     );
 
     async function removeIngress(entry: IngressEntry) {
@@ -209,7 +209,7 @@
                     <Copy class="size-4" aria-hidden="true" />
                 </Button>
             {/if}
-            {#if entry && !isInternal}
+            {#if entry && !readOnly}
                 {#if entry.kind === "caddy"}
                     <!-- Custom x-caddy config has no Railway form; it is edited in the Compose file. -->
                     <Button
@@ -319,7 +319,7 @@
                 </AlertDescription>
             </Alert>
         {/if}
-        {#if !isInternal && !ingressEditor}
+        {#if !readOnly && !ingressEditor}
             <div class="mt-3 flex flex-wrap gap-2">
                 <Button
                     variant="outline"

@@ -13,17 +13,12 @@
         FrameTitle,
     } from "$lib/components/ui/frame";
     import { Skeleton } from "$lib/components/ui/skeleton";
+    import { resourceHref } from "$lib/api/hrefs";
     import { orpc } from "$lib/api/orpc";
     import CircleAlert from "phosphor-svelte/lib/WarningCircleIcon";
     import { createQuery } from "@tanstack/svelte-query";
 
-    let {
-        clusterId,
-        onconfigure,
-    }: {
-        clusterId: string;
-        onconfigure: () => void;
-    } = $props();
+    let { clusterId }: { clusterId: string } = $props();
 
     const caddyQuery = createQuery(() => ({
         ...orpc.cluster.getCaddy.queryOptions({
@@ -35,6 +30,14 @@
     }));
 
     const caddy = $derived(caddyQuery.data);
+
+    const metricsWarning = $derived(
+        Boolean(
+            caddy?.monitoring &&
+            (caddy.missingMetrics.length > 0 ||
+                caddy.metricsEndpointOutdated),
+        ),
+    );
 </script>
 
 <Frame class="min-w-0">
@@ -51,24 +54,23 @@
                 </Badge>
             {/if}
         </div>
-        {#if caddy?.canManage}
-            {#if caddy.activeDeploymentId}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    href={`/deployments/${caddy.activeDeploymentId}`}
-                >
-                    View rollout
-                </Button>
-            {:else}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onclick={onconfigure}
-                >
-                    Configure
-                </Button>
-            {/if}
+        {#if caddy?.activeDeploymentId}
+            <Button
+                variant="outline"
+                size="sm"
+                href={`/deployments/${caddy.activeDeploymentId}`}
+            >
+                View rollout
+            </Button>
+        {:else if caddy}
+            <!-- Caddy is a resource in the cluster's internal project, edited like any other. -->
+            <Button
+                variant="outline"
+                size="sm"
+                href={resourceHref(caddy.projectId, caddy.resourceId)}
+            >
+                Configure
+            </Button>
         {/if}
     </FrameHeader>
     <FramePanel class="flex-1 p-0">
@@ -116,37 +118,51 @@
                     <dd>{caddy.hasCaddyfile ? "Set" : "Not set"}</dd>
                 </div>
             </dl>
-            {#if (caddy.monitoring && caddy.missingMetrics.length > 0) || caddy.reconciliationErrors.length > 0}
+            {#if metricsWarning || caddy.reconciliationErrors.length > 0}
                 <div class="space-y-3 border-t p-4">
-                    {#if caddy.monitoring && caddy.missingMetrics.length > 0}
+                    {#if metricsWarning}
                         <Alert variant="warning">
                             <CircleAlert aria-hidden="true" />
                             <AlertTitle>
                                 HTTP traffic is not recorded
                             </AlertTitle>
                             <AlertDescription>
-                                <p>
-                                    The global <code>metrics</code>
-                                    option is missing
-                                    {#each caddy.missingMetrics as name, index (name)}{index >
-                                        0
-                                            ? " and "
-                                            : ""}
-                                        <code>{name}</code>{/each},
-                                    which Clowder needs to record HTTP
-                                    traffic.
-                                </p>
-                                {#if caddy.canManage}
-                                    <Button
-                                        class="mt-2"
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!!caddy.activeDeploymentId}
-                                        onclick={onconfigure}
-                                    >
-                                        Fix in Caddy settings
-                                    </Button>
+                                {#if caddy.missingMetrics.length > 0}
+                                    <p>
+                                        The global <code>
+                                            metrics
+                                        </code>
+                                        option needs
+                                        {#each caddy.missingMetrics as name, index (name)}{index >
+                                            0
+                                                ? " and "
+                                                : ""}
+                                            <code>
+                                                {name}
+                                            </code>{/each}, which
+                                        Clowder needs to record HTTP
+                                        traffic.
+                                    </p>
                                 {/if}
+                                {#if caddy.metricsEndpointOutdated}
+                                    <p>
+                                        The running Caddy doesn't push
+                                        its metrics to this cluster's
+                                        monitoring. Deploy the Caddy
+                                        resource to update it.
+                                    </p>
+                                {/if}
+                                <Button
+                                    class="mt-2"
+                                    variant="outline"
+                                    size="sm"
+                                    href={resourceHref(
+                                        caddy.projectId,
+                                        caddy.resourceId,
+                                    )}
+                                >
+                                    Open Caddy
+                                </Button>
                             </AlertDescription>
                         </Alert>
                     {/if}
