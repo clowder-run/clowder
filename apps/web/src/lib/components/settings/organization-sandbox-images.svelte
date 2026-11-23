@@ -116,7 +116,7 @@
 
 <SettingsSection
     title="Sandbox images"
-    description="The images people can pick when they create a sandbox. Each must follow the sandbox image contract in the docs."
+    description="The images people can pick when they create a sandbox."
     count={imagesQuery.data
         ? `${imagesQuery.data.length} ${imagesQuery.data.length === 1 ? "image" : "images"}`
         : undefined}
@@ -127,6 +127,7 @@
             Add image
         </Button>
     {/snippet}
+
     {#if imagesQuery.isError}
         <Alert variant="error">
             <AlertDescription>

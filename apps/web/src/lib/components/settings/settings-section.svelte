@@ -20,9 +20,9 @@
 
 <section class="space-y-4" aria-labelledby={headingId}>
     <header
-        class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3"
+        class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3"
     >
-        <div class="min-w-0">
+        <div class="min-w-0 flex flex-col">
             <div class="flex flex-wrap items-baseline gap-2">
                 <h2
                     id={headingId}
