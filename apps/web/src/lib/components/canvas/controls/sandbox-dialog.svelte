@@ -52,6 +52,11 @@
         createMutation,
         createQuery,
     } from "@tanstack/svelte-query";
+    import {
+        parseAsString,
+        parseAsStringLiteral,
+        useQueryStates,
+    } from "nuqs-svelte";
     import ArrowsClockwise from "phosphor-svelte/lib/ArrowsClockwiseIcon";
     import Cube from "phosphor-svelte/lib/CubeIcon";
 
@@ -76,23 +81,57 @@
     // Select values can't be empty, so "let Uncloud decide" and "new volume" get a sentinel.
     const ANY = "any";
 
-    let name = $state(randomName());
+    // Everything but secrets lives in the URL, so a reload or a shared link keeps the form.
+    // Prefixed like `addSandbox`, since the canvas owns the other params.
+    const fields = useQueryStates(
+        {
+            name: parseAsString,
+            image: parseAsString,
+            cluster: parseAsString,
+            machine: parseAsString.withDefault(ANY),
+            volume: parseAsString.withDefault(ANY),
+            ttl: parseAsStringLiteral(
+                TTL_OPTIONS.map((option) => option.value),
+            ).withDefault("none"),
+            access: parseAsStringLiteral([
+                "key",
+                "password",
+            ]).withDefault("key"),
+            keys: parseAsString.withDefault(""),
+        },
+        {
+            history: "replace",
+            shallow: true,
+            scroll: false,
+            urlKeys: {
+                name: "sandboxName",
+                image: "sandboxImage",
+                cluster: "sandboxCluster",
+                machine: "sandboxMachine",
+                volume: "sandboxVolume",
+                ttl: "sandboxTtl",
+                access: "sandboxAccess",
+                keys: "sandboxKeys",
+            },
+        },
+    );
 
-    // `null` until picked: the first image and the project's own cluster.
-    let pickedImage = $state<string | null>(null);
+    // Suggested until one is typed or rolled.
+    const suggested = randomName();
 
-    let pickedCluster = $state<string | null>(null);
+    const name = $derived(fields.name.current ?? suggested);
 
-    let machine = $state(ANY);
+    const machine = $derived(fields.machine.current);
 
-    let volume = $state(ANY);
+    const volume = $derived(fields.volume.current);
 
-    let ttl = $state("none");
+    const ttl = $derived(fields.ttl.current);
 
-    let access = $state<"key" | "password">("key");
+    const access = $derived(fields.access.current);
 
-    let keys = $state("");
+    const keys = $derived(fields.keys.current);
 
+    // Secrets stay in memory, never in the URL.
     let privateKey = $state("");
 
     let password = $state("");
@@ -123,10 +162,13 @@
         ),
     );
 
-    const imageId = $derived(pickedImage ?? images[0]?.id ?? "");
+    // Defaults until one is picked: the first image and the project's own cluster.
+    const imageId = $derived(
+        fields.image.current ?? images[0]?.id ?? "",
+    );
 
     const clusterId = $derived(
-        pickedCluster ?? projectQuery.data?.clusterId ?? "",
+        fields.cluster.current ?? projectQuery.data?.clusterId ?? "",
     );
 
     const machinesQuery = createQuery(() =>
@@ -182,9 +224,17 @@
 
     const createState = createMutation(() =>
         orpc.sandboxes.create.mutationOptions({
-            onSuccess: ({ id }) => oncreated(id),
+            onSuccess: ({ id }) => {
+                void fields.set(null);
+                oncreated(id);
+            },
         }),
     );
+
+    function close() {
+        void fields.set(null);
+        onclose();
+    }
 
     const login = $derived(access === "key" ? keys.trim() : password);
 
@@ -201,16 +251,18 @@
     async function generateKey() {
         const pair = await sshKeyPair(name || "sandbox");
 
-        keys = pair.publicKey;
+        fields.keys.current = pair.publicKey;
         privateKey = pair.privateKey;
     }
 
     function selectCluster(value: string | null) {
         if (!value) return;
 
-        pickedCluster = value;
-        machine = ANY;
-        volume = ANY;
+        void fields.set({
+            cluster: value,
+            machine: null,
+            volume: null,
+        });
     }
 
     function create(event: SubmitEvent) {
@@ -264,7 +316,7 @@
     bind:open={
         () => true,
         (open) => {
-            if (!open && !createState.isPending) onclose();
+            if (!open && !createState.isPending) close();
         }
     }
 >
@@ -331,7 +383,11 @@
                         <InputGroup>
                             <InputGroupInput
                                 id="sandbox-name"
-                                bind:value={name}
+                                bind:value={
+                                    () => name,
+                                    (value) =>
+                                        (fields.name.current = value)
+                                }
                                 class="font-mono"
                                 autocomplete="off"
                                 spellcheck="false"
@@ -343,7 +399,8 @@
                                     variant="ghost"
                                     size="icon-sm"
                                     onclick={() =>
-                                        (name = randomName())}
+                                        (fields.name.current =
+                                            randomName())}
                                     aria-label="Pick another name"
                                     title="Pick another name"
                                 >
@@ -362,7 +419,7 @@
                             "sandbox-image",
                             imageId,
                             imageItems,
-                            (value) => (pickedImage = value),
+                            (value) => (fields.image.current = value),
                             false,
                         )}
                     </Field>
@@ -387,7 +444,9 @@
                                 "sandbox-machine",
                                 machine,
                                 machineItems,
-                                (value) => (machine = value ?? ANY),
+                                (value) =>
+                                    (fields.machine.current =
+                                        value ?? ANY),
                                 !clusterId,
                             )}
                             <FieldDescription>
@@ -402,7 +461,9 @@
                                 "sandbox-volume",
                                 volume,
                                 volumeItems,
-                                (value) => (volume = value ?? ANY),
+                                (value) =>
+                                    (fields.volume.current =
+                                        value ?? ANY),
                                 !clusterId,
                             )}
                         </Field>
@@ -414,7 +475,13 @@
                                 "sandbox-ttl",
                                 ttl,
                                 ttlItems,
-                                (value) => (ttl = value ?? "none"),
+                                (value) =>
+                                    (fields.ttl.current =
+                                        TTL_OPTIONS.find(
+                                            (option) =>
+                                                option.value ===
+                                                value,
+                                        )?.value ?? "none"),
                                 false,
                             )}
                         </Field>
@@ -434,7 +501,8 @@
                                         next[0] === "key" ||
                                         next[0] === "password"
                                     )
-                                        access = next[0];
+                                        fields.access.current =
+                                            next[0];
                                 }}
                             >
                                 <ToggleGroupItem value="key">
@@ -449,7 +517,7 @@
                             <Textarea
                                 id="sandbox-keys"
                                 aria-label="Public keys"
-                                bind:value={keys}
+                                bind:value={fields.keys.current}
                                 class="font-mono"
                                 rows={3}
                                 placeholder="ssh-ed25519 AAAA… you@laptop"
@@ -526,7 +594,7 @@
         <DialogFooter>
             <Button
                 variant="outline"
-                onclick={onclose}
+                onclick={close}
                 disabled={createState.isPending}
             >
                 Cancel

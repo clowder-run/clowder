@@ -1205,6 +1205,31 @@ describe("core project and resource isolation (PostgreSQL)", () => {
             }
         });
 
+        it("refuses name prefixes on the cluster's Caddy", async () => {
+            await db
+                .update(clusters)
+                .set({ caddyResourceId: internalResourceId })
+                .where(eq(clusters.id, clusterId));
+
+            try {
+                const before = await storedResource(internalResourceId);
+
+                await expect(
+                    client.updateSettings({
+                        projectId: internalProjectId,
+                        resourceId: internalResourceId,
+                        prefixNames: true,
+                    }),
+                ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+                expect(await storedResource(internalResourceId)).toEqual(before);
+            } finally {
+                await db
+                    .update(clusters)
+                    .set({ caddyResourceId: null })
+                    .where(eq(clusters.id, clusterId));
+            }
+        });
+
         it("denies creating resources in the internal project", async () => {
             const before = await db.select().from(resources).orderBy(asc(resources.id));
 

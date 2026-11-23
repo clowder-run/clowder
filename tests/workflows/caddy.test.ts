@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { createDb } from "@clowder/db";
-import { ensureCaddyResource, getCaddyResource } from "@clowder/db/caddy";
-import { clusters, projects, resources } from "@clowder/db/schema/index";
+import { ensureCaddyResource, getCaddyResource, queueCaddyDeployment } from "@clowder/db/caddy";
+import { clusters, projects, resourceDeploymentInputs, resources } from "@clowder/db/schema/index";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { parse } from "yaml";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { caddyCompose, caddyVariables } from "../../packages/workflows/src/caddy";
+import {
+    CADDY_METRICS_ENDPOINT,
+    caddyCompose,
+    caddyVariables,
+    withCaddyMounts,
+} from "../../packages/workflows/src/caddy";
 import { interpolateCompose } from "../../packages/workflows/src/compose";
 import {
     missingMetricsSubdirectives,
@@ -73,6 +78,26 @@ describe("caddy resource compose", () => {
                 CF_API_TOKEN: "secret value",
             }),
         ).toBe('CF_API_TOKEN="secret value"\n');
+    });
+
+    it("keeps a running Caddy's bind mounts, replacing the template's at the same path", () => {
+        const spec = withCaddyMounts(
+            caddyCompose("", "caddy:2"),
+            ["/srv/caddy-data:/data", "/etc/dns-token:/run/secrets/dns:ro"],
+            ["certs (volume) at /certs"],
+        );
+
+        const { caddy } = parse(spec).services;
+
+        expect(caddy.volumes).toEqual([
+            "/var/lib/uncloud/caddy:/etc/caddy:ro",
+            "/run/uncloud/caddy:/run/caddy",
+            "/run/uncloud/api:/run/uncloud/api:ro",
+            "/srv/caddy-data:/data",
+            "/etc/dns-token:/run/secrets/dns:ro",
+        ]);
+        expect(spec).toMatch(/^# .*\n# - certs \(volume\) at \/certs\n/u);
+        expect(CADDY_METRICS_ENDPOINT).toBe(caddy.environment.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT);
     });
 
     it("passes the canvas ingress checks", () => {
@@ -186,6 +211,30 @@ describe("caddy resource adoption (PostgreSQL)", () => {
         });
         // Whichever call won, the draft is never deployed by adoption.
         expect(resource?.spec).toBeNull();
+    });
+
+    it("queues setup's Caddy as the resource's draft, with its Variables", async () => {
+        const { resourceId } = await ensureCaddyResource(db, clusterId, "services: {}\n");
+        await db
+            .update(resources)
+            .set({ settings: { prefixNames: false, env: "CF_API_TOKEN=secret\n" } })
+            .where(eq(resources.id, resourceId));
+
+        const spec = caddyCompose(withCaddyMetrics(""), "caddy:2");
+        const deploymentId = await queueCaddyDeployment(db, clusterId, resourceId, spec);
+
+        expect(deploymentId).not.toBeNull();
+        expect(await queueCaddyDeployment(db, clusterId, resourceId, "services: {}\n")).toBeNull();
+
+        const [resource] = await db.select().from(resources).where(eq(resources.id, resourceId));
+        expect(resource?.draftSpec).toBe(spec);
+
+        const [inputs] = await db
+            .select()
+            .from(resourceDeploymentInputs)
+            .where(eq(resourceDeploymentInputs.deploymentId, deploymentId!));
+
+        expect(inputs).toMatchObject({ prefix: "", env: "CF_API_TOKEN=secret\n" });
     });
 
     it("still deletes a cluster with a Caddy resource", async () => {

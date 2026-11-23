@@ -109,6 +109,9 @@ const GEOIP_DATABASE = "/var/lib/clowder/geoip/country.mmdb";
 // to it, so Alloy's bind mount finds it there until the sidecar is updated (which writes through).
 const GEOIP_CHECK = `test -s ${GEOIP_DATABASE} || { test -s /var/lib/stoat/geoip/country.mmdb && test ! -e /var/lib/clowder/geoip && mkdir -p /var/lib/clowder && ln -s /var/lib/stoat/geoip /var/lib/clowder/geoip; }`;
 
+// The monitoring version that renamed the services Caddy pushes its metrics to.
+const RENAMED_MONITORING_VERSION = 4;
+
 export function bounded(signal: AbortSignal, ms: number) {
     return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
 }
@@ -433,6 +436,12 @@ export function createInitializeClusterHandler(
                             [template, state.resourceId],
                         );
                         await setMonitoringVersion(db, clusterId, MONITORING_VERSION);
+
+                        // Clowder never restarts ingress on its own; the Ingress card warns too.
+                        if (reconciling && deployedVersion < RENAMED_MONITORING_VERSION)
+                            await log(
+                                "Caddy still pushes HTTP metrics to the collector's old name. Deploy the cluster's Caddy resource to record HTTP traffic again.",
+                            );
 
                         return;
                     }

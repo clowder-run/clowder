@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { Database } from "./index";
 import { ensureInternalProject } from "./initialization";
@@ -72,9 +72,10 @@ export async function ensureCaddyResource(
 }
 
 /**
- * Queues a deployment of the Caddy resource's draft, like deploying it from the canvas. Returns
- * the deployment id to enqueue (the outbox sweep picks it up otherwise), or null when one is
- * already queued or running, say from an earlier setup attempt.
+ * Saves `spec` as the Caddy resource's draft and queues a deployment of it with the resource's
+ * Variables, like deploying it from the canvas. Returns the deployment id to enqueue (the outbox
+ * sweep picks it up otherwise), or null when one is already queued or running, say from an
+ * earlier setup attempt.
  */
 export async function queueCaddyDeployment(
     db: Database,
@@ -86,11 +87,13 @@ export async function queueCaddyDeployment(
 
     const queued = await db.transaction(async (tx) => {
         // Locking the resource row serializes this check with a deploy from the canvas.
-        await tx
-            .select({ id: resources.id })
+        const [resource] = await tx
+            .select({ env: sql<string>`coalesce(${resources.settings}->>'env', '')` })
             .from(resources)
             .where(eq(resources.id, resourceId))
             .for("update");
+
+        if (!resource) throw new Error("Caddy resource not found.");
 
         const [active] = await tx
             .select({ id: deployments.id })
@@ -105,6 +108,8 @@ export async function queueCaddyDeployment(
 
         if (active) return false;
 
+        // Otherwise the next deploy from the canvas rolls back to an older draft.
+        await tx.update(resources).set({ draftSpec: spec }).where(eq(resources.id, resourceId));
         await tx.insert(deployments).values({
             id: deploymentId,
             jobId: deploymentId,
@@ -116,7 +121,9 @@ export async function queueCaddyDeployment(
             metadata: { source: "docker", trigger: "manual" },
         });
         // An empty prefix deploys the service as plain `caddy`.
-        await tx.insert(resourceDeploymentInputs).values({ deploymentId, prefix: "" });
+        await tx
+            .insert(resourceDeploymentInputs)
+            .values({ deploymentId, prefix: "", env: resource.env });
         await tx.insert(deploymentLogs).values({
             deploymentId,
             text: "Resource deployment queued. Saved Compose snapshot captured.",

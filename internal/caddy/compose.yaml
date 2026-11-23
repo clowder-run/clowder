@@ -4,7 +4,7 @@
 # Uncloud's own caddy service (`uc caddy deploy`): Uncloud only treats a service named `caddy` as
 # ingress, and its `x-caddy` is the global Caddyfile. Clowder fills in both when it creates the
 # resource: a new cluster's Caddyfile has the `metrics` option HTTP traffic needs, and an adopted
-# cluster keeps its running Caddy's image, Caddyfile, extra ports and placement.
+# cluster keeps its running Caddy's image, Caddyfile, extra ports, bind mounts and placement.
 ####################################################################################################
 services:
     caddy:

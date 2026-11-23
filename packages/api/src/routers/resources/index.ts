@@ -239,6 +239,20 @@ export const resourcesRouter = {
             }),
         )
         .handler(async ({ context: { db, organizationId }, input }) => {
+            if (input.prefixNames) {
+                const [caddy] = await db
+                    .select({ id: clusters.id })
+                    .from(clusters)
+                    .where(eq(clusters.caddyResourceId, input.resourceId))
+                    .limit(1);
+
+                // Uncloud only treats a service called `caddy` as ingress.
+                if (caddy)
+                    throw new ORPCError("BAD_REQUEST", {
+                        message: "The cluster's Caddy keeps its names unprefixed.",
+                    });
+            }
+
             const [resource] = await db
                 .update(resources)
                 .set({

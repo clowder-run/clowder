@@ -1,7 +1,13 @@
 import { clusters, deployments } from "@clowder/db/schema/index";
 import { ensureCaddyResource, getCaddyResource } from "@clowder/db/caddy";
 import { unwrap, type UcClient } from "@clowder/uncloud";
-import { CADDY_SERVICE, caddyCompose, caddyVariables } from "@clowder/workflows/caddy";
+import {
+    CADDY_METRICS_ENDPOINT,
+    CADDY_SERVICE,
+    caddyCompose,
+    caddyVariables,
+    withCaddyMounts,
+} from "@clowder/workflows/caddy";
 import { missingMetricsSubdirectives, withCaddyMetrics } from "@clowder/workflows/caddy-metrics";
 import { and, eq, inArray } from "drizzle-orm";
 import * as v from "valibot";
@@ -44,29 +50,80 @@ const portSpec = v.pipe(
 // The parts of a running caddy container's service spec that adoption keeps.
 const liveCaddySpec = v.object({
     ServiceSpec: v.object({
-        Container: v.object({ Env: v.nullish(v.record(v.string(), v.string())) }),
+        Container: v.object({
+            Env: v.nullish(v.record(v.string(), v.string())),
+            VolumeMounts: v.nullish(
+                v.array(
+                    v.object({
+                        VolumeName: v.string(),
+                        ContainerPath: v.string(),
+                        ReadOnly: v.nullish(v.boolean()),
+                    }),
+                ),
+            ),
+            ConfigMounts: v.nullish(
+                v.array(v.object({ ConfigName: v.string(), ContainerPath: v.nullish(v.string()) })),
+            ),
+        }),
+        Volumes: v.nullish(
+            v.array(
+                v.object({
+                    Name: v.string(),
+                    Type: v.string(),
+                    BindOptions: v.nullish(v.object({ HostPath: v.string() })),
+                }),
+            ),
+        ),
         Ports: v.nullish(v.array(portSpec)),
         Placement: v.nullish(v.object({ Machines: v.nullish(v.array(v.string())) })),
     }),
 });
 
-/**
- * The Caddy resource's draft for a cluster that runs Caddy without one, and its Variables: the
- * running service's image, global Caddyfile, environment, extra ports and placement, so deploying
- * it changes nothing. A cluster without Caddy starts from the template.
- */
-async function adoptedCaddy(uc: UcClient, image: string, caddyfile: string, signal?: AbortSignal) {
-    if (!image) return { spec: caddyCompose(withCaddyMetrics("")), env: "" };
+type LiveCaddy = v.InferOutput<typeof liveCaddySpec>["ServiceSpec"];
 
+async function liveCaddy(uc: UcClient, signal?: AbortSignal) {
     const { containers } = await unwrap(
         uc.GET("/api/v1/services/{id}", { params: { path: { id: CADDY_SERVICE } }, signal }),
     );
 
     // A global service runs one spec everywhere, unless a rollout is midway.
-    const live = containers[0] ? v.parse(liveCaddySpec, containers[0].container).ServiceSpec : null;
+    return containers[0] ? v.parse(liveCaddySpec, containers[0].container).ServiceSpec : null;
+}
+
+/**
+ * The Caddy resource's draft for a cluster that runs Caddy without one, and its Variables: the
+ * running service's image, global Caddyfile, environment, extra ports, bind mounts and
+ * placement. Its healthcheck is the template's, and mounts a Compose file can't hold are listed
+ * in the draft. A cluster without Caddy starts from the template.
+ */
+function adoptedCaddy(image: string, caddyfile: string, live: LiveCaddy | null) {
+    if (!image) return { spec: caddyCompose(withCaddyMetrics("")), env: "" };
+
+    const volumes = new Map((live?.Volumes ?? []).map((volume) => [volume.Name, volume]));
+    const mounts: string[] = [];
+    const dropped: string[] = [];
+
+    for (const mount of live?.Container.VolumeMounts ?? []) {
+        const volume = volumes.get(mount.VolumeName);
+        const readOnly = mount.ReadOnly ? ":ro" : "";
+
+        if (volume?.Type === "bind" && volume.BindOptions)
+            mounts.push(`${volume.BindOptions.HostPath}:${mount.ContainerPath}${readOnly}`);
+        else
+            dropped.push(
+                `${mount.VolumeName} (${volume?.Type ?? "volume"}) at ${mount.ContainerPath}`,
+            );
+    }
+
+    for (const mount of live?.Container.ConfigMounts ?? [])
+        dropped.push(
+            `config ${mount.ConfigName} at ${mount.ContainerPath ?? `/${mount.ConfigName}`}`,
+        );
+
+    const spec = caddyCompose(caddyfile, image, live?.Ports ?? [], live?.Placement?.Machines ?? []);
 
     return {
-        spec: caddyCompose(caddyfile, image, live?.Ports ?? [], live?.Placement?.Machines ?? []),
+        spec: withCaddyMounts(spec, mounts, dropped),
         env: caddyVariables(live?.Container.Env ?? {}),
     };
 }
@@ -87,16 +144,17 @@ export const caddyRouter = {
                     .limit(1),
             ]);
 
+            const live = settings.deployed ? await liveCaddy(uc, signal) : null;
+
             // Clusters from before Caddy was a resource adopt the running one as a draft. It is
             // never deployed here: a restart would take down the whole cluster's ingress.
             let resource = await getCaddyResource(db, input.clusterId);
 
             if (!resource) {
-                const adopted = await adoptedCaddy(
-                    uc,
+                const adopted = adoptedCaddy(
                     settings.deployed ? settings.image : "",
                     settings.caddyfile,
-                    signal,
+                    live,
                 );
 
                 resource = await ensureCaddyResource(
@@ -125,7 +183,15 @@ export const caddyRouter = {
                 hasCaddyfile: settings.caddyfile !== "",
                 // Caddy pushes HTTP metrics only while monitoring runs.
                 monitoring: !!cluster?.initializedAt,
-                missingMetrics: missingMetricsSubdirectives(settings.caddyfile),
+                // Without a running Caddy there is no Caddyfile to check yet.
+                missingMetrics: settings.deployed
+                    ? missingMetricsSubdirectives(settings.caddyfile)
+                    : [],
+                // Caddy from `uc`, or from before monitoring renamed Alloy, pushes elsewhere.
+                metricsEndpointOutdated:
+                    settings.deployed &&
+                    live?.Container.Env?.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT !==
+                        CADDY_METRICS_ENDPOINT,
                 // Caddy keeps serving its previous config on these machines.
                 reconciliationErrors: configs.items.flatMap((item) =>
                     item.lastReconciliationError
