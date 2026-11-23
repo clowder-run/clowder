@@ -63,18 +63,25 @@ describe("channel messages", () => {
     const notice = deploymentNotice(failed)!;
 
     it("keeps Discord from pinging and from breaking out of the error block", () => {
-        const payload = discord(notice);
+        const payload = discord(notice, "sex defender");
         const embed = payload.embeds[0]!;
 
         expect(payload.allowed_mentions).toEqual({ parse: [] });
+        expect(payload.username).toBe("sex defender");
         expect(embed.color).toBe(0xef4444);
         expect(embed.description).toMatch(/^```\n/u);
         expect(embed.description!.slice(4, -4)).not.toContain("```");
         expect(embed.fields.every((field) => field.value.length <= 256)).toBe(true);
     });
 
+    it("keeps the webhook's own name when Discord would refuse the channel's", () => {
+        expect(discord(notice, "Discord deploys").username).toBeUndefined();
+        expect(discord(notice, "everyone").username).toBeUndefined();
+        expect(discord(notice, "x".repeat(100)).username).toHaveLength(80);
+    });
+
     it("clips long errors for Discord", () => {
-        const embed = discord({ ...notice, detail: "x".repeat(10_000) }).embeds[0]!;
+        const embed = discord({ ...notice, detail: "x".repeat(10_000) }, "Deploys").embeds[0]!;
 
         expect(embed.description!.length).toBeLessThan(1600);
     });
@@ -91,6 +98,7 @@ describe("channel messages", () => {
         const delivery = render(
             { type: "webhook", url: "https://hooks.example.com", secret: "s3cret" },
             notice,
+            "Hooks",
         );
 
         const timestamp = delivery.headers["x-clowder-timestamp"]!;
@@ -102,7 +110,7 @@ describe("channel messages", () => {
         expect(delivery.headers["x-clowder-signature"]).toBe(`sha256=${expected}`);
         expect(JSON.parse(delivery.body).deployment.status).toBe("failed");
         expect(
-            render({ type: "webhook", url: "https://hooks.example.com" }, notice).headers,
+            render({ type: "webhook", url: "https://hooks.example.com" }, notice, "Hooks").headers,
         ).not.toHaveProperty("x-clowder-signature");
     });
 
@@ -115,6 +123,7 @@ describe("channel messages", () => {
                 token: "tk_1",
             },
             notice,
+            "Phone",
         );
 
         expect(delivery.url).toBe("https://ntfy.example.com");

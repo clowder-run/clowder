@@ -221,7 +221,21 @@
 
     let name = $state("");
 
-    let values = $state<Record<string, string>>({});
+    // Every field starts as a string: the input treats an undefined value as uncontrolled and
+    // never writes back to the binding.
+    function emptyValues(
+        next: NotificationChannelType,
+    ): Record<string, string> {
+        const empty = Object.fromEntries(
+            channelTypes[next].fields.map((field) => [field.key, ""]),
+        );
+
+        return next === "ntfy"
+            ? { ...empty, serverUrl: "https://ntfy.sh" }
+            : empty;
+    }
+
+    let values = $state(emptyValues("discord"));
 
     let events = $state<NotificationEvent[]>([
         "deployment.failed",
@@ -252,7 +266,7 @@
     function openCreate() {
         type = "discord";
         name = "";
-        values = {};
+        values = emptyValues("discord");
         events = ["deployment.failed", "deployment.succeeded"];
         createState.reset();
         createOpen.set(true);
@@ -262,8 +276,7 @@
         if (!next || !(next in channelTypes)) return;
         // SAFETY: checked against the channelTypes keys above.
         type = next as NotificationChannelType;
-        values =
-            type === "ntfy" ? { serverUrl: "https://ntfy.sh" } : {};
+        values = emptyValues(type);
     }
 
     function toggleEvent(event: NotificationEvent, checked: boolean) {

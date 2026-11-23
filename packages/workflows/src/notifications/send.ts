@@ -72,12 +72,16 @@ export function post(delivery: Delivery, signal: AbortSignal): Promise<void> {
 
 export function sendNotice(
     config: NotificationChannelConfig,
+    sender: string,
     notice: Notice,
     signal?: AbortSignal,
 ) {
     const timeout = AbortSignal.timeout(TIMEOUT_MS);
 
-    return post(render(config, notice), signal ? AbortSignal.any([signal, timeout]) : timeout);
+    return post(
+        render(config, notice, sender),
+        signal ? AbortSignal.any([signal, timeout]) : timeout,
+    );
 }
 
 export function readChannelConfig(stored: string): NotificationChannelConfig {
@@ -143,5 +147,5 @@ export async function deliverNotification(
 
     if (!notice || deployment.cluster.organizationId !== channel.organizationId) return;
 
-    await sendNotice(readChannelConfig(channel.config), notice, signal);
+    await sendNotice(readChannelConfig(channel.config), channel.name, notice, signal);
 }

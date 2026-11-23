@@ -9,10 +9,15 @@ const colors = { success: 0x22c55e, failure: 0xef4444, info: 0x3b82f6 };
 
 const emoji = { success: "✅", failure: "🚨", info: "🔔" };
 
-export function render(config: NotificationChannelConfig, notice: Notice): Delivery {
+/** `sender` is the channel's name; services that let a message pick its author show it. */
+export function render(
+    config: NotificationChannelConfig,
+    notice: Notice,
+    sender: string,
+): Delivery {
     switch (config.type) {
         case "discord":
-            return json(config.webhookUrl, JSON.stringify(discord(notice)));
+            return json(config.webhookUrl, JSON.stringify(discord(notice, sender)));
         case "telegram":
             return json(
                 `https://api.telegram.org/bot${config.botToken}/sendMessage`,
@@ -49,8 +54,17 @@ export function escapeHtml(text: string) {
 }
 
 // Limits are Discord's (title 256, field 1024, 25 fields, 6000 per embed); clipping keeps us well under.
-export function discord(notice: Notice) {
+// Discord refuses names containing "discord" or "clyde", and "everyone" or "here", so those keep
+// the webhook's own name.
+function discordUsername(sender: string) {
+    const name = clip(sender.trim(), 80);
+
+    return /discord|clyde/iu.test(name) || /^(?:everyone|here)$/iu.test(name) ? undefined : name;
+}
+
+export function discord(notice: Notice, sender: string) {
     return {
+        username: discordUsername(sender),
         // A commit message saying @everyone must not ping the server.
         allowed_mentions: { parse: [] },
         embeds: [

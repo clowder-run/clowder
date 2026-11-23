@@ -159,6 +159,7 @@ export const notificationsRouter = {
             try {
                 await sendNotice(
                     readChannelConfig(channel.config),
+                    channel.name,
                     testNotice(channel.name),
                     signal,
                 );
