@@ -2,7 +2,6 @@
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import AddMachineDialog from "$lib/components/clusters/add-machine-dialog.svelte";
-    import CaddyDialog from "$lib/components/clusters/caddy-dialog.svelte";
     import ClusterCaddyCard from "$lib/components/clusters/cluster-caddy-card.svelte";
     import ClusterConnectionsMatrix from "$lib/components/clusters/cluster-connections-matrix.svelte";
     import ClusterDomainCard from "$lib/components/clusters/cluster-domain-card.svelte";
@@ -176,7 +175,6 @@
             | "reinitialize"
             | "monitoring"
             | "retention"
-            | "caddy"
             | "domain"
             | "remove-domain"
             | "add-machine",
@@ -443,10 +441,7 @@
                     onopendialog={openDialog}
                 />
 
-                <ClusterCaddyCard
-                    clusterId={cluster.id}
-                    onconfigure={() => openDialog("caddy")}
-                />
+                <ClusterCaddyCard clusterId={cluster.id} />
 
                 <ClusterDomainCard
                     clusterId={cluster.id}
@@ -489,18 +484,6 @@
     onInitialized={openDeployment}
 />
 {#if cluster?.canInitialize}
-    <CaddyDialog
-        bind:open={
-            () => dialog.current === "caddy",
-            (open) => {
-                if (mounted && !open && dialog.current === "caddy") {
-                    void dialog.set(null);
-                }
-            }
-        }
-        {clusterId}
-        ondeployed={openDeployment}
-    />
     <ClusterDomainDialog {clusterId} />
     <AddMachineDialog {clusterId} />
     <RemoveMachineDialog {clusterId} {machines} />

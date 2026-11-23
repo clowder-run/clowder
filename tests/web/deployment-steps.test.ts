@@ -54,6 +54,8 @@ it("collapses a replace deployment into a short step list", () => {
         },
     ]);
     expect(steps[2]?.machine).toBe("luna");
+    // The pair starts when the old container stopped, not when the swap finished.
+    expect(steps.map((step) => step.time)).toEqual([0, 0, 0]);
 });
 
 it("shows live monitoring as the active step", () => {

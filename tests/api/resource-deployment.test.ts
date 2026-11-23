@@ -201,7 +201,7 @@ describe("resource deployment API", () => {
         expect(JSON.stringify(items)).not.toContain("hidden");
     });
 
-    it("rejects empty/invalid Compose, wrong projects, and internal resources", async () => {
+    it("rejects empty/invalid Compose, wrong projects, and managed resources", async () => {
         for (const spec of [null, "", "services: {}", "services: [bad"]) {
             const input = await resource(spec, {}, draftSpec);
             await expect(call(resourcesRouter.deploy, input, { context })).rejects.toMatchObject({
@@ -219,10 +219,17 @@ describe("resource deployment API", () => {
         await expect(
             call(resourcesRouter.deploy, { ...input, projectId: randomUUID() }, { context }),
         ).rejects.toMatchObject({ code: "NOT_FOUND" });
-        await db.update(projects).set({ isInternal: true }).where(eq(projects.id, projectId));
+        // Only the monitoring resource is locked; Caddy, also internal, deploys like any resource.
+        await db.$client.query(
+            `INSERT INTO cluster_monitoring (cluster_id, project_id, resource_id, encrypted_password)
+             SELECT cluster_id, id, $2, 'unused' FROM projects WHERE id = $1`,
+            [input.projectId, input.resourceId],
+        );
         await expect(call(resourcesRouter.deploy, input, { context })).rejects.toMatchObject({
             code: "NOT_FOUND",
         });
-        await db.update(projects).set({ isInternal: false }).where(eq(projects.id, projectId));
+        await db.$client.query("DELETE FROM cluster_monitoring WHERE resource_id = $1", [
+            input.resourceId,
+        ]);
     });
 });

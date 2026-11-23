@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { jobLabels, sourceLabels } from "$lib/deployments/labels";
     import { useHeaderActions } from "$lib/components/sidebar/header-actions";
     import {
         Alert,
@@ -277,22 +278,6 @@
         Array.from({ length: limit }, (_, index) => index),
     );
 
-    const jobLabels = new Map([
-        ["InitializeCluster", "Cluster setup"],
-        ["DeployCaddy", "Caddy"],
-        ["ProvisionCluster", "Cluster creation"],
-        ["AddMachine", "New machine"],
-        ["ProvisionSandbox", "New sandbox"],
-        ["DestroySandbox", "Sandbox removal"],
-    ]);
-
-    const sources = {
-        forgejo: "Forgejo",
-        github: "GitHub",
-        git: "Git",
-        docker: "Docker",
-    };
-
     const dots = new Map([
         ["queued", "bg-warning"],
         ["running", "bg-info animate-pulse"],
@@ -551,7 +536,7 @@
                 </span>
             {:else if deployment.metadata}
                 <span class="truncate">
-                    via {sources[deployment.metadata.source]}
+                    via {sourceLabels[deployment.metadata.source]}
                 </span>
             {/if}
         </span>

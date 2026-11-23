@@ -13,17 +13,12 @@
         FrameTitle,
     } from "$lib/components/ui/frame";
     import { Skeleton } from "$lib/components/ui/skeleton";
+    import { resourceHref } from "$lib/api/hrefs";
     import { orpc } from "$lib/api/orpc";
     import CircleAlert from "phosphor-svelte/lib/WarningCircleIcon";
     import { createQuery } from "@tanstack/svelte-query";
 
-    let {
-        clusterId,
-        onconfigure,
-    }: {
-        clusterId: string;
-        onconfigure: () => void;
-    } = $props();
+    let { clusterId }: { clusterId: string } = $props();
 
     const caddyQuery = createQuery(() => ({
         ...orpc.cluster.getCaddy.queryOptions({
@@ -51,24 +46,23 @@
                 </Badge>
             {/if}
         </div>
-        {#if caddy?.canManage}
-            {#if caddy.activeDeploymentId}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    href={`/deployments/${caddy.activeDeploymentId}`}
-                >
-                    View rollout
-                </Button>
-            {:else}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onclick={onconfigure}
-                >
-                    Configure
-                </Button>
-            {/if}
+        {#if caddy?.activeDeploymentId}
+            <Button
+                variant="outline"
+                size="sm"
+                href={`/deployments/${caddy.activeDeploymentId}`}
+            >
+                View rollout
+            </Button>
+        {:else if caddy}
+            <!-- Caddy is a resource in the cluster's internal project, edited like any other. -->
+            <Button
+                variant="outline"
+                size="sm"
+                href={resourceHref(caddy.projectId, caddy.resourceId)}
+            >
+                Configure
+            </Button>
         {/if}
     </FrameHeader>
     <FramePanel class="flex-1 p-0">
@@ -127,7 +121,7 @@
                             <AlertDescription>
                                 <p>
                                     The global <code>metrics</code>
-                                    option is missing
+                                    option needs
                                     {#each caddy.missingMetrics as name, index (name)}{index >
                                         0
                                             ? " and "
@@ -136,17 +130,17 @@
                                     which Clowder needs to record HTTP
                                     traffic.
                                 </p>
-                                {#if caddy.canManage}
-                                    <Button
-                                        class="mt-2"
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!!caddy.activeDeploymentId}
-                                        onclick={onconfigure}
-                                    >
-                                        Fix in Caddy settings
-                                    </Button>
-                                {/if}
+                                <Button
+                                    class="mt-2"
+                                    variant="outline"
+                                    size="sm"
+                                    href={resourceHref(
+                                        caddy.projectId,
+                                        caddy.resourceId,
+                                    )}
+                                >
+                                    Open Caddy
+                                </Button>
                             </AlertDescription>
                         </Alert>
                     {/if}

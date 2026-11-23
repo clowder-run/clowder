@@ -113,15 +113,6 @@ type CaddySettingsResponse struct {
 	Caddyfile string `json:"caddyfile" doc:"Global Caddyfile prepended to the generated config (the caddy service's x-caddy)."`
 }
 
-// DeployCaddyRequest is the desired caddy image and global Caddyfile. Both are
-// always sent, so an empty Caddyfile removes the global config.
-type DeployCaddyRequest struct {
-	Image     string `json:"image" minLength:"1" maxLength:"512" doc:"Caddy image. Custom images must include curl and start Caddy with /etc/caddy/Caddyfile."`
-	Caddyfile string `json:"caddyfile" maxLength:"262144" doc:"Global Caddyfile prepended to the generated config. Empty removes it."`
-	// Env is merged into the deployed environment, so variables set elsewhere survive.
-	Env map[string]string `json:"env,omitempty" maxProperties:"32" doc:"Environment variables merged into the caddy container's environment."`
-}
-
 // CaddyCertificatesResponse lists certificates in Caddy's cluster storage.
 // Errors holds stored certificates that could not be parsed.
 type CaddyCertificatesResponse struct {

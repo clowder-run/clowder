@@ -267,32 +267,6 @@
                 "required": ["name", "type", "values"],
                 "type": "object"
             },
-            "DeployCaddyRequest": {
-                "additionalProperties": false,
-                "properties": {
-                    "caddyfile": {
-                        "description": "Global Caddyfile prepended to the generated config. Empty removes it.",
-                        "maxLength": 262144,
-                        "type": "string"
-                    },
-                    "env": {
-                        "additionalProperties": {
-                            "type": "string"
-                        },
-                        "description": "Environment variables merged into the caddy container's environment.",
-                        "maxProperties": 32,
-                        "type": "object"
-                    },
-                    "image": {
-                        "description": "Caddy image. Custom images must include curl and start Caddy with /etc/caddy/Caddyfile.",
-                        "maxLength": 512,
-                        "minLength": 1,
-                        "type": "string"
-                    }
-                },
-                "required": ["image", "caddyfile"],
-                "type": "object"
-            },
             "DeployComposeEvent": {
                 "additionalProperties": false,
                 "properties": {
@@ -1420,86 +1394,6 @@
                     }
                 },
                 "summary": "List active Caddy configurations",
-                "tags": ["cluster"]
-            }
-        },
-        "/api/v1/caddy/deploy": {
-            "post": {
-                "description": "Like `uc caddy deploy`, but keeps the rest of the running caddy service spec (environment, volumes, placement), so a Caddy deployed from Compose keeps its customizations. An invalid global Caddyfile does not fail the deployment: Caddy keeps its previous config and the reason shows up as lastReconciliationError in /api/v1/caddy/configs.",
-                "operationId": "deployCaddy",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/DeployCaddyRequest"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "200": {
-                        "content": {
-                            "text/event-stream": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/DeployComposeEvent"
-                                }
-                            }
-                        },
-                        "description": "Server-Sent deployment events"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ErrorResponse"
-                                }
-                            }
-                        },
-                        "description": "Bad Request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ErrorResponse"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ErrorResponse"
-                                }
-                            }
-                        },
-                        "description": "Not Found"
-                    },
-                    "422": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ErrorResponse"
-                                }
-                            }
-                        },
-                        "description": "Unprocessable Entity"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ErrorResponse"
-                                }
-                            }
-                        },
-                        "description": "Internal Server Error"
-                    }
-                },
-                "summary": "Deploy Caddy with an image and global Caddyfile",
                 "tags": ["cluster"]
             }
         },

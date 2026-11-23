@@ -3,9 +3,10 @@ import { ORPCError, os } from "@orpc/server";
 import { getOrganizationMembership } from "@clowder/db/organizations";
 import { clusters, projects, resources } from "@clowder/db/schema/index";
 import { ucClient } from "@clowder/uncloud";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { Context } from "./context";
+import { editableResource } from "./routers/resources/access";
 
 export const o = os.$context<Context>();
 
@@ -83,8 +84,8 @@ export const uncloudMiddleware = organizationProcedure.middleware(
     },
 );
 
-// System-managed internal projects are readable but never writable here.
-function resourceAccess(allowInternalRead: boolean) {
+// Resources Clowder manages itself, like the monitoring stack, are readable but never writable here.
+function resourceAccess(allowManagedRead: boolean) {
     return organizationProcedure.middleware(
         async (
             { context: { db, organizationId }, next },
@@ -100,7 +101,6 @@ function resourceAccess(allowInternalRead: boolean) {
                         input.clusterId === undefined
                             ? undefined
                             : eq(projects.clusterId, input.clusterId),
-                        allowInternalRead ? undefined : sql`${projects.isInternal} is not true`,
                         eq(clusters.organizationId, organizationId),
                     ),
                 )
@@ -117,6 +117,7 @@ function resourceAccess(allowInternalRead: boolean) {
                     and(
                         eq(resources.id, input.resourceId),
                         eq(resources.projectId, input.projectId),
+                        allowManagedRead ? undefined : editableResource,
                     ),
                 )
                 .limit(1);

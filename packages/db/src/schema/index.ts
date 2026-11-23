@@ -84,6 +84,10 @@ export const clusters = t.pgTable(
         // The single-use SSH private key for `pendingMachine`, deleted with it.
         pendingMachineKey: encryptedText("pending_machine_key", "cluster-pending-machine"),
         greptimeUrl: t.text("greptime_url"),
+        // The `caddy` service as a resource in the cluster's internal project; adopted on first view.
+        caddyResourceId: t
+            .uuid("caddy_resource_id")
+            .references((): t.AnyPgColumn => resources.id, { onDelete: "set null" }),
         organizationId: t
             .text("organization_id")
             .notNull()

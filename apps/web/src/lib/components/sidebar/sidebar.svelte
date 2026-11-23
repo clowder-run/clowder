@@ -13,20 +13,17 @@
         SidebarSeparator,
     } from "$lib/components/ui/sidebar";
     import { useSidebar } from "$lib/components/ui/sidebar/context.svelte";
-    import FolderOpen from "phosphor-svelte/lib/FolderOpenIcon";
-    import GitBranch from "phosphor-svelte/lib/GitBranchIcon";
-    import HardDrive from "phosphor-svelte/lib/DatabaseIcon";
-    import LayoutDashboard from "phosphor-svelte/lib/HouseIcon";
-    import Rocket from "phosphor-svelte/lib/RocketIcon";
-    import Server from "phosphor-svelte/lib/HardDrivesIcon";
-    import Stack from "phosphor-svelte/lib/StackIcon";
-    import Settings from "phosphor-svelte/lib/GearSixIcon";
     import Shield from "phosphor-svelte/lib/ShieldCheckIcon";
     import OrgSwitcher from "./org-switcher.svelte";
     import ObservabilityNav from "./observability-nav.svelte";
     import SidebarAppFooter from "./sidebar-footer.svelte";
     import SidebarNavLink from "./sidebar-nav-link.svelte";
     import SearchButton from "$lib/components/search/search-button.svelte";
+    import {
+        configSections,
+        isSectionActive,
+        mainSections,
+    } from "./nav-sections";
 
     let {
         variant = "inset",
@@ -53,20 +50,6 @@
 
     const pathname = $derived(page.url.pathname);
 
-    const mainLinks = [
-        { title: "Home", url: "/", icon: LayoutDashboard },
-        { title: "Projects", url: "/projects", icon: FolderOpen },
-        { title: "Deployments", url: "/deployments", icon: Rocket },
-        { title: "Templates", url: "/templates", icon: Stack },
-    ];
-
-    const configLinks = [
-        { title: "Clusters", url: "/clusters", icon: Server },
-        { title: "Git", url: "/git", icon: GitBranch },
-        { title: "S3 connections", url: "/s3", icon: HardDrive },
-        { title: "Settings", url: "/settings", icon: Settings },
-    ];
-
     const isAdmin = $derived(user.role === "admin");
 </script>
 
@@ -86,14 +69,15 @@
             <SidebarGroupLabel>Main</SidebarGroupLabel>
             <SidebarGroupContent>
                 <SidebarMenu>
-                    {#each mainLinks as link (link.url)}
+                    {#each mainSections as link (link.url)}
                         <SidebarNavLink
                             href={link.url}
                             title={link.title}
                             icon={link.icon}
-                            active={link.url === "/"
-                                ? pathname === "/"
-                                : pathname.startsWith(link.url)}
+                            active={isSectionActive(
+                                link.url,
+                                pathname,
+                            )}
                             current={pathname === link.url}
                             onclick={closeNavigation}
                         >
@@ -109,12 +93,15 @@
             <SidebarGroupLabel>Configuration</SidebarGroupLabel>
             <SidebarGroupContent>
                 <SidebarMenu>
-                    {#each configLinks as link (link.url)}
+                    {#each configSections as link (link.url)}
                         <SidebarNavLink
                             href={link.url}
                             title={link.title}
                             icon={link.icon}
-                            active={pathname.startsWith(link.url)}
+                            active={isSectionActive(
+                                link.url,
+                                pathname,
+                            )}
                             current={pathname === link.url}
                             onclick={closeNavigation}
                         >

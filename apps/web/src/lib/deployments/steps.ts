@@ -95,7 +95,8 @@ export function deploymentSteps(lines: DeploymentLine[], running: boolean) {
     const upsert = (key: string, step: Omit<DeploymentStep, "key" | "history" | "ops">) => {
         const found = byKey.get(key);
 
-        if (found) return Object.assign(found, { time: step.time });
+        // Steps keep the time they started, matching their order in the list.
+        if (found) return found;
         const created: DeploymentStep = { key, history: [], ops: [], ...step };
         byKey.set(key, created);
         steps.push(created);
@@ -339,7 +340,7 @@ function pairReplacements(steps: DeploymentStep[]) {
             state: old.state,
             detail: old.detail,
         };
-        next.time = Math.max(next.time, old.time);
+        next.time = Math.min(next.time, old.time);
         next.state =
             stateRank[Math.max(stateRank.indexOf(next.state), stateRank.indexOf(old.state))]!;
         next.detail ??= old.detail;

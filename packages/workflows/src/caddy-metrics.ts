@@ -1,14 +1,11 @@
-/**
- * Caddyfile edits for HTTP metrics. Dependency-free, so the Caddy settings dialog can check the
- * Caddyfile as it is edited.
- */
+/** Caddyfile edits for HTTP metrics: the Caddy resource's template and the cluster's Ingress card. */
 
 /** The `metrics` subdirectives HTTP traffic needs: hostnames map metrics to services, OTLP pushes them to Alloy. */
 export const REQUIRED_METRICS_SUBDIRECTIVES = ["per_host", "otlp"];
 
 const METRICS_OPTION = ["\tmetrics {", "\t\tper_host", "\t\totlp", "\t}"];
 
-type MetricsOption = { start: number; end: number; indent: string; subdirectives: string[] };
+type MetricsOption = { start: number; end: number; subdirectives: string[] };
 
 /** A line without its quoted text and trailing comment, so neither counts as braces. */
 function code(line: string) {
@@ -24,10 +21,6 @@ function braceDelta(line: string) {
     return (text.match(/\{/g)?.length ?? 0) - (text.match(/\}/g)?.length ?? 0);
 }
 
-function indentation(line: string) {
-    return line.slice(0, line.length - line.trimStart().length);
-}
-
 /** The global options block's opening line, or -1. Caddy only accepts it as the first thing in the file. */
 function globalBlockStart(lines: string[]) {
     const start = lines.findIndex((line) => line.trim() !== "" && !line.trim().startsWith("#"));
@@ -38,14 +31,13 @@ function globalBlockStart(lines: string[]) {
 /** Reads `metrics`, `metrics { per_host }` or a multi-line `metrics { … }` starting at `start`. */
 function readMetricsOption(lines: string[], start: number): MetricsOption | null {
     const line = code(lines[start]!);
-    const indent = indentation(lines[start]!);
 
-    if (!line.includes("{")) return { start, end: start, indent, subdirectives: [] };
+    if (!line.includes("{")) return { start, end: start, subdirectives: [] };
 
     if (line.endsWith("}")) {
         const inner = line.slice(line.indexOf("{") + 1, -1).trim();
 
-        return { start, end: start, indent, subdirectives: inner ? inner.split(/\s+/) : [] };
+        return { start, end: start, subdirectives: inner ? inner.split(/\s+/) : [] };
     }
 
     const subdirectives: string[] = [];
@@ -60,7 +52,7 @@ function readMetricsOption(lines: string[], start: number): MetricsOption | null
 
         depth += braceDelta(inner);
 
-        if (depth === 0) return { start, end: index, indent, subdirectives };
+        if (depth === 0) return { start, end: index, subdirectives };
     }
 
     return null;
@@ -111,49 +103,14 @@ export function withCaddyMetrics(caddyfile: string): string {
 }
 
 /**
- * Subdirectives a user-written global `metrics` option lacks for HTTP traffic. Empty when the
- * option is complete or absent, since Clowder adds a complete one itself when it is absent.
+ * Subdirectives the global `metrics` option lacks for HTTP traffic: all of them when there is
+ * no such option. Clowder never edits a running Caddyfile, so the Ingress card asks for them.
  */
 export function missingMetricsSubdirectives(caddyfile: string): string[] {
     const option = findMetricsOption(caddyfile.split("\n"));
 
-    if (!option) return [];
+    // No `metrics` option at all records nothing either.
+    if (!option) return REQUIRED_METRICS_SUBDIRECTIVES;
 
     return REQUIRED_METRICS_SUBDIRECTIVES.filter((name) => !option.subdirectives.includes(name));
-}
-
-/** Adds the missing subdirectives to the user's global `metrics` option, keeping the rest of it. */
-export function completeMetricsOption(caddyfile: string): string {
-    const lines = caddyfile.split("\n");
-    const option = findMetricsOption(lines);
-
-    if (!option) return caddyfile;
-
-    const missing = REQUIRED_METRICS_SUBDIRECTIVES.filter(
-        (name) => !option.subdirectives.includes(name),
-    );
-
-    if (!missing.length) return caddyfile;
-
-    // A multi-line block keeps its own lines, comments included; the others are rebuilt.
-    const multiline = option.end > option.start;
-    const body = multiline ? lines.slice(option.start + 1, option.end) : [];
-    const firstChild = body.find((line) => line.trim() !== "");
-
-    const childIndent = firstChild
-        ? indentation(firstChild)
-        : option.indent + (option.indent || "\t");
-
-    const children = multiline ? body : option.subdirectives.map((name) => `${childIndent}${name}`);
-
-    lines.splice(
-        option.start,
-        option.end - option.start + 1,
-        `${option.indent}metrics {`,
-        ...children,
-        ...missing.map((name) => `${childIndent}${name}`),
-        `${option.indent}}`,
-    );
-
-    return lines.join("\n");
 }

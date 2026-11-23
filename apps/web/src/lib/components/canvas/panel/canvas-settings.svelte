@@ -68,6 +68,12 @@
             projectQuery.data.isInternal === true,
     );
 
+    // Only resources Clowder manages itself, like monitoring, are read-only.
+    const readOnly = $derived(
+        !projectQuery.isSuccess ||
+            projectQuery.data.managedResourceId === resource.id,
+    );
+
     const git = new GitSourceActions(
         () => resource.projectId,
         () => resource.id,
@@ -279,7 +285,7 @@
             {services}
             {draftCompose}
             {env}
-            {isInternal}
+            {readOnly}
             {savingDraft}
             {saveDraft}
             {shows}
@@ -291,6 +297,7 @@
             settings={details?.settings}
             {draftCompose}
             {isInternal}
+            {readOnly}
             {savingDraft}
             {saveDraft}
         />

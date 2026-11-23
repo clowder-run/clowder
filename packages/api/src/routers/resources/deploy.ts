@@ -13,6 +13,7 @@ import * as v from "valibot";
 
 import { organizationProcedure } from "../..";
 import { composeConfigFiles } from "../../compose";
+import { editableResource } from "./access";
 import { unpushedGitSource } from "./git";
 import { getBoundGitRepository, getGitConnection, gitMessage } from "../connections";
 import { removeResources } from "../../resources/removal";
@@ -39,7 +40,7 @@ export function deployTarget(
             and(
                 eq(resources.id, input.resourceId),
                 eq(projects.id, input.projectId),
-                sql`${projects.isInternal} is not true`,
+                editableResource,
                 eq(clusters.organizationId, organizationId),
             ),
         );

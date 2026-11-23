@@ -9,8 +9,11 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { generate } from "selfsigned";
 import { stringify } from "yaml";
+import { Effect } from "effect";
 import sidecarCompose from "../../../internal/sidecar/compose.yaml?raw";
-import { CLUSTER_STORAGE_CADDY, createCaddyDeployment } from "./deploy-caddy";
+import { ensureCaddyResource, queueCaddyDeployment } from "@clowder/db/caddy";
+import { caddyCompose, CLUSTER_STORAGE_CADDY } from "./caddy";
+import { withCaddyMetrics } from "./caddy-metrics";
 import { isPrivateServerAddress } from "./server-address";
 import {
     createWorkspace,
@@ -25,6 +28,8 @@ import {
     type Workspace,
 } from "./ssh-setup";
 import { sshKeyPair } from "./ssh-key";
+import { DeployResource } from "./jobs";
+import { JobStoreLive } from "./store";
 
 // What `clusters.provisioning_secrets` holds until the cluster is ready.
 type ProvisioningSecrets = { sshKey: string; tlsKey: string };
@@ -207,15 +212,23 @@ export function provisioningLock(clusterId: string) {
     return `stoat:provision:${clusterId}`;
 }
 
-// Like Caddy's metrics for monitoring, this never fails setup: stock Caddy still serves the cluster.
+// This never fails setup: stock Caddy still serves the cluster.
 async function deployClusterStorageCaddy(db: Database, clusterId: string, log: Log) {
     const { image, caddyfile } = CLUSTER_STORAGE_CADDY;
 
     try {
-        await createCaddyDeployment(db, clusterId, image, caddyfile, false);
+        const spec = caddyCompose(withCaddyMetrics(caddyfile), image);
+        const { resourceId } = await ensureCaddyResource(db, clusterId, spec);
+        const deploymentId = await queueCaddyDeployment(db, clusterId, resourceId, spec);
+
+        // The queued row is the outbox, so a failed enqueue is picked up by the next sweep.
+        if (deploymentId)
+            await Effect.runPromise(
+                DeployResource.enqueue({ deploymentId }).pipe(Effect.provide(JobStoreLive)),
+            ).catch(() => {});
         log(`Deploying ${image} so every machine's Caddy shares certificates through the cluster.`);
     } catch {
-        log("Couldn't switch Caddy to cluster storage. Change it in the cluster's Caddy settings.");
+        log("Couldn't switch Caddy to cluster storage. Change it on the cluster's Caddy resource.");
     }
 }
 

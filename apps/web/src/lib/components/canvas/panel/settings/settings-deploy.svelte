@@ -29,6 +29,7 @@
         settings,
         draftCompose,
         isInternal,
+        readOnly,
         savingDraft,
         saveDraft,
     }: {
@@ -36,7 +37,9 @@
         services: CanvasService[];
         settings: ResourceDetails["settings"] | undefined;
         draftCompose: string;
+        /** Internal resources keep unprefixed names: Uncloud finds Caddy by its plain name. */
         isInternal: boolean;
+        readOnly: boolean;
         savingDraft: boolean;
         /** Resolves to the error message, or null once saved. */
         saveDraft: (compose: string) => Promise<string | null>;
@@ -155,7 +158,7 @@
             {#each ["auto", "start-first", "stop-first"] as order (order)}
                 <ToggleGroupItem
                     value={order}
-                    disabled={savingDraft || isInternal}
+                    disabled={savingDraft || readOnly}
                 >
                     {order}
                 </ToggleGroupItem>

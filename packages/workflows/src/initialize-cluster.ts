@@ -25,7 +25,6 @@ export { readSqlRows } from "./greptime";
 
 import { appendDeploymentLog } from "@clowder/db/deployments";
 import { deployCompose } from "./deploy-compose";
-import { enableCaddyMetrics } from "./deploy-caddy";
 
 export type DeployLogFn = (
     text: string,
@@ -109,9 +108,6 @@ const GEOIP_DATABASE = "/var/lib/clowder/geoip/country.mmdb";
 // Sidecars from before the rename keep the database in /var/lib/stoat/geoip. Link the new path
 // to it, so Alloy's bind mount finds it there until the sidecar is updated (which writes through).
 const GEOIP_CHECK = `test -s ${GEOIP_DATABASE} || { test -s /var/lib/stoat/geoip/country.mmdb && test ! -e /var/lib/clowder/geoip && mkdir -p /var/lib/clowder && ln -s /var/lib/stoat/geoip /var/lib/clowder/geoip; }`;
-
-// The monitoring version that renamed the services Caddy pushes its metrics to.
-const RENAMED_MONITORING_VERSION = 4;
 
 export function bounded(signal: AbortSignal, ms: number) {
     return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
@@ -437,17 +433,6 @@ export function createInitializeClusterHandler(
                             [template, state.resourceId],
                         );
                         await setMonitoringVersion(db, clusterId, MONITORING_VERSION);
-
-                        // Caddy already pushes metrics once initialized; don't restart it again,
-                        // unless it still pushes to the collector from before the rename (version 4).
-                        if (!reconciling || deployedVersion < RENAMED_MONITORING_VERSION)
-                            await enableCaddyMetrics(
-                                db,
-                                uc,
-                                clusterId,
-                                (text) => log(text),
-                                bounded(signal, 30_000),
-                            );
 
                         return;
                     }

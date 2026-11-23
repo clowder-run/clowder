@@ -34,10 +34,10 @@
         }),
     );
 
-    // Until the project loads, nothing is editable, so an internal resource never flashes its edit controls.
+    // Until the project loads, nothing is editable, so a managed resource never flashes its edit controls.
     const readOnly = $derived(
         !projectQuery.isSuccess ||
-            projectQuery.data.isInternal === true,
+            projectQuery.data.managedResourceId === resource.id,
     );
 
     const details = $derived(resourceQuery.data);
