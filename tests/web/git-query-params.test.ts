@@ -4,12 +4,12 @@ import {
     connectionFormParsers,
 } from "../../apps/web/src/lib/params/git-query-params";
 
-it("accepts supported query providers and rejects Gitea", () => {
-    for (const provider of ["github", "forgejo", "generic"]) {
+it("accepts supported query providers and rejects unsupported ones", () => {
+    for (const provider of ["github", "forgejo", "gitea", "gitlab", "generic"]) {
         expect(connectionFormParsers.provider.parse(provider)).toBe(provider);
     }
 
-    expect(connectionFormParsers.provider.parse("gitea")).toBeNull();
+    expect(connectionFormParsers.provider.parse("sourcehut")).toBeNull();
 });
 
 it("preserves connection drafts on close/reopen and clears them on save or switching connections", () => {

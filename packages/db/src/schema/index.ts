@@ -161,6 +161,18 @@ export const projectFavorites = t.pgTable(
     ],
 );
 
+export type GitProvider =
+    | "forgejo"
+    | "github"
+    | "gitlab"
+    | "gitea"
+    | "bitbucket"
+    | "gitee"
+    | "gitcafe"
+    | "pushin"
+    | "upstream"
+    | "generic";
+
 export type GitAccount = { id: string; login: string; name: string | null };
 
 export type GitKnownRepository = { url: string; name: string; defaultBranch: string };
@@ -174,7 +186,7 @@ export const gitOAuthProviders = t.pgTable(
             .notNull()
             .references(() => organization.id, { onDelete: "cascade" }),
         name: t.text("name").notNull(),
-        provider: t.text("provider").$type<"github" | "forgejo">().notNull(),
+        provider: t.text("provider").$type<"forgejo" | "github" | "gitea">().notNull(),
         serverUrl: t.text("server_url").notNull(),
         clientId: t.text("client_id").notNull(),
         encryptedClientSecret: t.text("encrypted_client_secret").notNull(),
@@ -196,7 +208,7 @@ export const gitConnections = t.pgTable(
             .notNull()
             .references(() => organization.id, { onDelete: "cascade" }),
         name: t.text("name").notNull(),
-        provider: t.text("provider").$type<"github" | "forgejo" | "generic">().notNull(),
+        provider: t.text("provider").$type<GitProvider>().notNull(),
         serverUrl: t.text("server_url").notNull(),
         authType: t.text("auth_type").$type<"token" | "oauth">().notNull().default("token"),
         account: t.jsonb("account").$type<GitAccount>(),
@@ -328,7 +340,7 @@ export type DeploymentStatus = "queued" | "running" | "ready" | "failed" | "canc
 
 // Where a resource deployment came from. "docker" is a Compose edited in Clowder, without Git.
 export type DeploymentMetadata = {
-    source: "forgejo" | "github" | "git" | "docker";
+    source: Exclude<GitProvider, "generic"> | "git" | "docker";
     trigger: "manual" | "webhook" | "poll";
     commit?: { sha: string; message: string };
     /** Each service's image with Variables and references resolved, saved by the worker. */

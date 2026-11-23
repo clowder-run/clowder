@@ -28,6 +28,7 @@ minimumReleaseAgeExclude:
     - effect@4.0.0-rc.116
     - skullet@0.0.3
     - "@regular-ppl/hitbox@0.1.0"
+    - forges@0.4.1
 overrides:
     vite@*: "catalog:"
     "@esbuild-kit/core-utils>esbuild": ^0.28.2

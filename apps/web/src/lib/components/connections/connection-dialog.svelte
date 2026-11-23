@@ -28,10 +28,16 @@
         SelectValue,
     } from "$lib/components/ui/select";
     import { Textarea } from "$lib/components/ui/textarea";
-    import { connectionFormParsers } from "$lib/params/git-query-params";
+    import {
+        connectionFormParsers,
+        gitOAuthProviderKind,
+        gitProviderLabels,
+        gitProviders,
+        gitProviderServerUrls,
+        type GitProvider,
+    } from "$lib/params/git-query-params";
     import { client, orpc, queryClient } from "$lib/api/orpc";
     import { createQuery } from "@tanstack/svelte-query";
-    import { Match } from "effect";
     import {
         parseAsStringLiteral,
         useQueryStates,
@@ -39,13 +45,10 @@
     import { watch } from "runed";
     import { onDestroy, untrack } from "svelte";
 
-    type Provider = "forgejo" | "github" | "generic";
-
-    const providerOptions: { value: Provider; label: string }[] = [
-        { value: "forgejo", label: "Forgejo" },
-        { value: "github", label: "GitHub" },
-        { value: "generic", label: "Generic Git server" },
-    ];
+    const providerOptions = gitProviders.map((value) => ({
+        value,
+        label: gitProviderLabels[value],
+    }));
 
     type Repository = {
         url: string;
@@ -58,7 +61,7 @@
     type OAuthProvider = {
         id: string;
         name: string;
-        provider: Provider;
+        provider: GitProvider;
         serverUrl: string;
     };
 
@@ -73,7 +76,7 @@
         connection: {
             id: string;
             name: string;
-            provider: Provider;
+            provider: GitProvider;
             serverUrl: string;
             authType: "token" | "oauth";
             account: Account | null;
@@ -118,17 +121,18 @@
         { history: "replace", shallow: true, scroll: false },
     );
 
-    // A crafted URL must not enable OAuth for a generic server.
+    // Only forges with GitHub-style OAuth endpoints offer OAuth.
+    const oauthKind = $derived(
+        gitOAuthProviderKind(fields.provider.current),
+    );
+
+    // A crafted URL must not enable OAuth for a provider without it.
     const authMode = $derived(
-        fields.provider.current === "generic"
-            ? "token"
-            : fields.authMode.current,
+        oauthKind ? fields.authMode.current : "token",
     );
 
     const providerLabel = $derived(
-        providerOptions.find(
-            (option) => option.value === fields.provider.current,
-        )?.label ?? fields.provider.current,
+        gitProviderLabels[fields.provider.current],
     );
 
     const authOptions = $derived([
@@ -153,9 +157,9 @@
                     (option) =>
                         option.id === fields.oauthProviderId.current,
                 )?.serverUrl ??
-                (fields.provider.current === "github"
-                    ? "https://github.com"
-                    : (providers[0]?.serverUrl ?? ""))
+                gitProviderServerUrls[fields.provider.current] ??
+                providers[0]?.serverUrl ??
+                ""
             );
         }),
     );
@@ -247,7 +251,7 @@
 
         // Reject controls before URL parsing can discard them.
         if (
-            fields.provider.current === "generic" ||
+            !oauthKind ||
             raw.length > 2048 ||
             /[\s\p{Cc}\\]/u.test(raw)
         )
@@ -311,11 +315,7 @@
     );
 
     const appName = $derived(
-        fields.name.current.trim() ||
-            `${Match.value(fields.provider.current).pipe(
-                Match.when("github", () => "GitHub"),
-                Match.orElse(() => "Forgejo"),
-            )} OAuth`,
+        fields.name.current.trim() || `${providerLabel} OAuth`,
     );
 
     const setupReady = $derived(
@@ -335,12 +335,13 @@
     );
 
     watch.pre(
-        () => [
-            fields.provider.current,
-            authMode,
-            serverUrl,
-            fields.oauthProviderId.current,
-        ],
+        () =>
+            [
+                fields.provider.current,
+                authMode,
+                serverUrl,
+                fields.oauthProviderId.current,
+            ] as const,
         (current, previous) => {
             if (
                 !previous ||
@@ -366,10 +367,9 @@
                 if (selected) serverUrl = selected.serverUrl;
                 else if (provider !== previousProvider) {
                     serverUrl =
-                        provider === "github"
-                            ? "https://github.com"
-                            : (matchingOAuthProviders[0]?.serverUrl ??
-                              "");
+                        gitProviderServerUrls[provider] ??
+                        matchingOAuthProviders[0]?.serverUrl ??
+                        "";
                 }
             }
 
@@ -487,12 +487,7 @@
     async function saveOAuthProvider(event: SubmitEvent) {
         event.preventDefault();
 
-        if (
-            busy ||
-            authMode !== "oauth" ||
-            fields.provider.current === "generic" ||
-            !setupReady
-        )
+        if (busy || authMode !== "oauth" || !oauthKind || !setupReady)
             return;
         pending = "app";
         setupError = setupStatus = "";
@@ -503,7 +498,7 @@
                 await client.connections.createOAuthProvider({
                     organizationId: initialOrganizationId,
                     name: appName,
-                    provider: fields.provider.current,
+                    provider: oauthKind,
                     serverUrl: oauthServerUrl,
                     clientId: clientId.trim(),
                     clientSecret,
@@ -807,15 +802,16 @@
                                     next === fields.provider.current
                                 )
                                     return;
-                                const provider = next as Provider;
+                                const provider = next as GitProvider;
                                 void fields.set({
                                     provider,
                                     oauthProviderId: null,
                                     setupExpanded: null,
-                                    authMode:
-                                        provider === "generic"
-                                            ? "token"
-                                            : authMode,
+                                    authMode: gitOAuthProviderKind(
+                                        provider,
+                                    )
+                                        ? authMode
+                                        : "token",
                                 });
                             }}
                         >
@@ -893,11 +889,9 @@
                         onValueChange={(next) => {
                             if (!next) return;
                             void fields.set({
-                                authMode:
-                                    fields.provider.current ===
-                                    "generic"
-                                        ? "token"
-                                        : (next as "token" | "oauth"),
+                                authMode: oauthKind
+                                    ? (next as "token" | "oauth")
+                                    : "token",
                                 setupExpanded: null,
                             });
                         }}
@@ -911,9 +905,7 @@
                                     value={option.value}
                                     label={option.label}
                                     disabled={option.value ===
-                                        "oauth" &&
-                                        fields.provider.current ===
-                                            "generic"}
+                                        "oauth" && !oauthKind}
                                 />
                             {/each}
                         </SelectContent>

@@ -19,11 +19,13 @@ import {
 import {
     ensureGitWebhook,
     getGitAccount,
+    gitCloneUsername,
     listGitRepositories,
     validateGitServerUrl,
     type GitProvider,
     type GitDiscoveredRepository,
 } from "../../git/provider";
+import { gitOAuthProviderKinds, gitProviders } from "../../git/providers";
 import {
     createOrganizationGitOAuthProvider,
     getGitOAuthCallbackUrl,
@@ -58,7 +60,7 @@ const repositoryInput = v.object({
 const repositoriesInput = v.optional(v.pipe(v.array(repositoryInput), v.maxLength(100)));
 
 const accountInput = {
-    provider: v.picklist(["github", "forgejo", "generic"]),
+    provider: v.picklist(gitProviders),
     serverUrl: url,
     credentials: credentialsInput,
     repositories: repositoriesInput,
@@ -174,7 +176,7 @@ async function verifyAccount(input: {
         truncated: result.truncated,
         credentials: {
             ...input.credentials,
-            username: input.provider === "github" ? "x-access-token" : account.login,
+            username: gitCloneUsername(input.provider, account),
         },
     };
 }
@@ -376,7 +378,7 @@ export const connectionsRouter = {
             v.object({
                 organizationId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
                 name,
-                provider: v.picklist(["github", "forgejo"]),
+                provider: v.picklist(gitOAuthProviderKinds),
                 serverUrl: v.pipe(v.string(), v.minLength(1), v.maxLength(2048)),
                 clientId: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(2048)),
                 clientSecret: v.pipe(v.string(), v.minLength(1), v.maxLength(8192)),

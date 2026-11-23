@@ -28,6 +28,7 @@
         "@orpc/valibot": "catalog:",
         "drizzle-orm": "catalog:",
         "effect": "4.0.0-rc.116",
+        "forges": "0.4.1",
         "ofetch": "catalog:",
         "ssh2": "^1.17.0",
         "unstorage": "^1.17.5",

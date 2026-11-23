@@ -18,17 +18,19 @@ import type { Context } from "../context";
 import type { GitCredentials } from "./index";
 import {
     getGitAccount,
+    gitCloneUsername,
     gitProviderRequest,
     listGitRepositories,
     validateGitServerUrl,
 } from "./provider";
+import { gitOAuthProviderKinds } from "./providers";
 import { encryptGitCredentials } from "./secrets";
 import { decryptGitOAuthClientSecret, encryptGitOAuthClientSecret } from "./oauth-secrets";
 
 const providerSchema = v.strictObject({
     id: v.pipe(v.string(), v.regex(/^[a-zA-Z0-9_-]{1,64}$/)),
     name: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(100)),
-    provider: v.picklist(["github", "forgejo"]),
+    provider: v.picklist(gitOAuthProviderKinds),
     serverUrl: v.pipe(v.string(), v.minLength(1), v.maxLength(2048)),
     clientId: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(2048)),
     clientSecret: v.pipe(v.string(), v.minLength(1), v.maxLength(8192)),
@@ -631,7 +633,7 @@ export async function exchangeGitOAuthCode(
 
         const credentials: GitCredentials = {
             ...token,
-            username: provider.provider === "github" ? "x-access-token" : account.login,
+            username: gitCloneUsername(provider.provider, account),
         };
 
         return { provider, account, credentials };

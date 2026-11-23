@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import * as v from "valibot";
 
+import { readGitWebhook } from "./provider";
+
 // Derived from APP_SECRET, so there is nothing to store. Rotating APP_SECRET rotates every one.
 // The label keeps the legacy name on purpose: Git hosts hold the derived secret, so renaming it breaks every webhook.
 export function gitWebhookSecret(connectionId: string): string {
@@ -28,8 +30,8 @@ export function gitWebhookUrl(connectionId: string): string {
 }
 
 /**
- * A push webhook from Forgejo or GitHub. The payload is only a signed nudge: it queues a check of
- * the connection's resources, which reads Git itself, so nothing in the body is trusted.
+ * A push webhook from any forge. The payload is only a signed nudge: it queues a check of the
+ * connection's resources, which reads Git itself, so nothing in the body is trusted.
  */
 export async function receiveGitWebhook(
     db: Database,
@@ -41,32 +43,50 @@ export async function receiveGitWebhook(
         return { status: 404, message: "Unknown webhook." };
 
     const [connection] = await db
-        .select({ id: gitConnections.id })
+        .select({ provider: gitConnections.provider, serverUrl: gitConnections.serverUrl })
         .from(gitConnections)
         .where(eq(gitConnections.id, connectionId));
 
     if (!connection) return { status: 404, message: "Unknown webhook." };
 
+    const secret = gitWebhookSecret(connectionId);
+
+    const push =
+        connection.provider === "generic"
+            ? signedPush(secret, headers, body)
+            : (
+                  await readGitWebhook(
+                      connection.provider,
+                      connection.serverUrl,
+                      secret,
+                      headers,
+                      body,
+                  )
+              )?.some((event) => event.kind === "push");
+
+    if (push === undefined) return { status: 401, message: "Invalid webhook signature." };
+
+    if (!push) return { status: 200, message: "Webhook is active." };
+
+    await queueGitWatch(connectionId);
+
+    return { status: 202, message: "Checking for changes." };
+}
+
+// A generic server's hook is set up by hand in GitHub's or Forgejo's format, which forges cannot pick for us.
+function signedPush(secret: string, headers: Headers, body: Buffer): boolean | undefined {
     // GitHub prefixes its hex HMAC-SHA256 with "sha256="; Forgejo sends it bare.
     const signature =
         headers.get("x-hub-signature-256")?.replace(/^sha256=/u, "") ??
         headers.get("x-forgejo-signature") ??
         "";
 
-    const expected = createHmac("sha256", gitWebhookSecret(connectionId)).update(body).digest();
+    const expected = createHmac("sha256", secret).update(body).digest();
     const received = Buffer.from(signature, "hex");
 
     if (received.length !== expected.length || !timingSafeEqual(received, expected))
-        return { status: 401, message: "Invalid webhook signature." };
+        return undefined;
 
     // Forgejo also sends X-GitHub-Event, so this header covers both.
-    const event = headers.get("x-forgejo-event") ?? headers.get("x-github-event");
-
-    if (event === "ping") return { status: 200, message: "Webhook is active." };
-
-    if (event !== "push") return { status: 202, message: `Ignored ${event ?? "unknown"} event.` };
-
-    await queueGitWatch(connectionId);
-
-    return { status: 202, message: "Checking for changes." };
+    return (headers.get("x-forgejo-event") ?? headers.get("x-github-event")) === "push";
 }

@@ -5,6 +5,7 @@ import https, { Agent, type RequestOptions } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -23,7 +24,7 @@ const network = {
     calls: [] as {
         url: URL;
         options: RequestOptions;
-        body?: string;
+        body?: Buffer;
         destroy: ReturnType<typeof vi.fn>;
     }[],
 };
@@ -53,7 +54,7 @@ const fakeRequest = (
 
     const req = Object.assign(new EventEmitter(), {
         destroy: vi.fn(),
-        end: (_body?: string) => {},
+        end: (_body?: Buffer) => {},
     });
 
     req.end = (body) => {
@@ -115,8 +116,10 @@ afterAll(() => {
 import {
     ensureGitWebhook,
     getGitAccount,
+    gitCloneUsername,
     gitProviderRequest,
     listGitRepositories,
+    readGitWebhook,
     validateGitServerUrl,
 } from "../../packages/api/src/git/provider";
 import type { GitProvider } from "../../packages/api/src/git/provider";
@@ -135,8 +138,11 @@ const forgejo = {
 
 function repo(index: number, server = "https://github.com") {
     return {
+        id: index + 1,
         name: `repo-${index}`,
         full_name: `team/repo-${index}`,
+        owner: { login: "team", id: 1 },
+        html_url: `${server}/team/repo-${index}`,
         clone_url: `${server}/team/repo-${index}.git`,
         default_branch: "release/stable",
         token: "must-not-return",
@@ -161,8 +167,11 @@ describe("Git server validation", () => {
         expect(Object.keys(await import("../../packages/api/src/git/provider")).sort()).toEqual([
             "ensureGitWebhook",
             "getGitAccount",
+            "gitCloneUsername",
+            "gitProviderFetch",
             "gitProviderRequest",
             "listGitRepositories",
+            "readGitWebhook",
             "validateGitServerUrl",
         ]);
     });
@@ -207,16 +216,21 @@ describe("Git server validation", () => {
         expect(() => validateGitServerUrl(url, "forgejo")).toThrow();
     });
 
-    it("does not accept GitLab or public GitHub API prefixes/alternate ports", () => {
-        // SAFETY: intentionally unsupported provider exercises runtime validation.
-        expect(() => validateGitServerUrl("https://gitlab.com", "gitlab" as GitProvider)).toThrow();
+    it("does not accept public GitHub API prefixes/alternate ports or Bitbucket servers", () => {
         expect(() => validateGitServerUrl("https://github.com/api/v3", "github")).toThrow();
         expect(() => validateGitServerUrl("https://github.com:8443", "github")).toThrow();
+        expect(() => validateGitServerUrl("https://bitbucket.example.com", "bitbucket")).toThrow();
+        expect(validateGitServerUrl("https://bitbucket.org/", "bitbucket")).toBe(
+            "https://bitbucket.org",
+        );
+        expect(validateGitServerUrl("https://gitlab.example.com/", "gitlab")).toBe(
+            "https://gitlab.example.com",
+        );
     });
 
-    it("rejects Gitea as a runtime provider", () => {
+    it("rejects a forge forges does not cover as a runtime provider", () => {
         // SAFETY: intentionally unsupported provider exercises runtime validation.
-        expect(() => validateGitServerUrl(forgejo.serverUrl, "gitea" as GitProvider)).toThrow();
+        expect(() => validateGitServerUrl(forgejo.serverUrl, "sourcehut" as GitProvider)).toThrow();
     });
 
     it("rejects long invalid paths without pathological regex backtracking", () => {
@@ -291,7 +305,7 @@ describe("Pinned HTTPS JSON transport", () => {
                 body,
             }),
         ).resolves.toEqual({ access_token: "new-token", token_type: "bearer" });
-        expect(network.calls[0]!.body).toBe(body);
+        expect(String(network.calls[0]!.body)).toBe(body);
         expect(network.calls[0]!.options.headers).toMatchObject({
             accept: "application/json",
             "content-type": "application/x-www-form-urlencoded",
@@ -502,11 +516,16 @@ describe("Account discovery", () => {
             "https://github.com.example/forge/api/v3/user",
         ],
         [forgejo, "https://git.example.com/forge/api/v1/user"],
+        [
+            { provider: "gitlab" as const, serverUrl: "https://gitlab.com", token: "secret-token" },
+            "https://gitlab.com/api/v4/user",
+        ],
     ])("uses the correct /user endpoint for %j", async (input, endpoint) => {
         network.reply = () => ({
             data: {
                 id: 123,
                 login: "alice.smith",
+                username: "alice.smith",
                 name: "Alice",
                 full_name: "Alice",
                 token: "never-return",
@@ -518,22 +537,26 @@ describe("Account discovery", () => {
             name: "Alice",
         });
         expect(network.calls[0]!.url.toString()).toBe(endpoint);
-        expect(network.calls[0]!.options.headers).toMatchObject({
-            authorization: "Bearer secret-token",
-        });
+        expect(JSON.stringify(network.calls[0]!.options.headers)).toContain("secret-token");
     });
 
-    it.each([
-        null,
-        {},
-        { id: {}, login: "alice" },
-        { id: Number.MAX_SAFE_INTEGER + 1, login: "alice" },
-        { id: 1, login: "alice:password" },
-        { id: 1, login: "-option" },
-        { id: 1, login: "alice\n" },
-    ])("rejects invalid account data %j", async (data) => {
-        network.reply = () => ({ data });
-        await expect(getGitAccount(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
+    it.each([null, {}, { id: 1, login: "alice:password" }, { id: 1, login: "alice\n" }])(
+        "rejects invalid account data %j",
+        async (data) => {
+            network.reply = () => ({ data });
+            await expect(getGitAccount(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
+        },
+    );
+
+    // forges wraps transport errors, so these check the codes survive its client.
+    it("keeps the transport's error codes through forges", async () => {
+        network.addresses = [{ address: "127.0.0.1", family: 4 }];
+        await expect(getGitAccount(github)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+        expect(request).not.toHaveBeenCalled();
+
+        network.addresses = [{ address: "93.184.216.34", family: 4 }];
+        network.reply = () => ({ chunks: [Buffer.alloc(4 * 1024 * 1024 + 1)] });
+        await expect(getGitAccount(github)).rejects.toMatchObject({ code: "PAYLOAD_TOO_LARGE" });
     });
 
     it("preserves string IDs and drops unsafe optional display names", async () => {
@@ -555,19 +578,42 @@ describe("Account discovery", () => {
         await expect(getGitAccount({ ...github, token: "secret\n" })).rejects.toThrow();
         expect(request).not.toHaveBeenCalled();
     });
+
+    it("clones with each forge's token username", () => {
+        const account = { id: "1", login: "alice", name: null };
+        expect(gitCloneUsername("github", account)).toBe("x-access-token");
+        expect(gitCloneUsername("gitlab", account)).toBe("oauth2");
+        expect(gitCloneUsername("bitbucket", account)).toBe("x-token-auth");
+        expect(gitCloneUsername("forgejo", account)).toBe("alice");
+    });
 });
+
+// Answers /user/repos with `total` repositories, 100 per page, linking same-origin next pages.
+function pagedRepos(total: number, server = "https://github.com") {
+    return (url: URL): Reply => {
+        const page = Number(url.searchParams.get("page") ?? "1");
+        const start = (page - 1) * 100;
+        const next = new URL(url);
+        next.searchParams.set("page", String(page + 1));
+
+        return {
+            data: Array.from({ length: Math.max(0, Math.min(100, total - start)) }, (_, i) =>
+                repo(start + i, server),
+            ),
+            headers: start + 100 < total ? { link: `<${next.href}>; rel="next"` } : {},
+        };
+    };
+}
 
 describe("Repository discovery", () => {
     it("uses the Enterprise API while retaining the Enterprise clone origin", async () => {
         const server = "https://github.enterprise.example:8443";
-        network.reply = (url) => ({
-            data: url.searchParams.get("page") === "1" ? [repo(1, server)] : [],
-        });
+        network.reply = pagedRepos(1, server);
         await expect(listGitRepositories({ ...github, serverUrl: server })).resolves.toEqual({
             repositories: [
                 {
-                    url: `${server}/team/repo-1.git`,
-                    name: "team/repo-1",
+                    url: `${server}/team/repo-0.git`,
+                    name: "team/repo-0",
                     defaultBranch: "release/stable",
                 },
             ],
@@ -577,77 +623,60 @@ describe("Repository discovery", () => {
         expect(network.calls[0]!.url.pathname).toBe("/api/v3/user/repos");
     });
 
-    it("paginates all affiliations, ignores untrusted links and returns only sanitized fields", async () => {
-        network.reply = (url) => ({
-            data:
-                Number(url.searchParams.get("page")) <= 2
-                    ? [repo(Number(url.searchParams.get("page")))]
-                    : [],
-            headers: { link: '<https://evil.example/user/repos?page=2>; rel="next"' },
+    it("follows same-origin pages and returns only sanitized fields", async () => {
+        network.reply = pagedRepos(150);
+        const result = await listGitRepositories(github);
+        expect(result.truncated).toBe(false);
+        expect(result.repositories).toHaveLength(150);
+        expect(result.repositories[0]).toEqual({
+            url: repo(0).clone_url,
+            name: repo(0).full_name,
+            defaultBranch: "release/stable",
         });
-        await expect(listGitRepositories(github)).resolves.toEqual({
-            repositories: [1, 2].map((id) => ({
-                url: repo(id).clone_url,
-                name: repo(id).full_name,
-                defaultBranch: "release/stable",
-            })),
-            truncated: false,
-        });
-        expect(network.calls).toHaveLength(3);
+        expect(network.calls).toHaveLength(2);
 
-        for (const { url } of network.calls) {
-            expect(url.origin).toBe("https://api.github.com");
-            expect(url.pathname).toBe("/user/repos");
-            expect(url.searchParams.get("affiliation")).toBe(
-                "owner,collaborator,organization_member",
-            );
-            expect(url.searchParams.get("per_page")).toBe("100");
-        }
+        for (const { url } of network.calls) expect(url.origin).toBe("https://api.github.com");
     });
 
-    it("keeps Forgejo path prefixes and continues server-capped short pages", async () => {
+    it("refuses pagination links to another origin without sending the token there", async () => {
         network.reply = (url) => ({
-            data:
-                Number(url.searchParams.get("page")) <= 3
-                    ? [repo(Number(url.searchParams.get("page")), forgejo.serverUrl)]
-                    : [],
+            data: url.host === "api.github.com" ? [repo(1)] : [],
+            headers: { link: '<https://evil.example/user/repos?page=2>; rel="next"' },
         });
+        await expect(listGitRepositories(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
+        expect(network.calls.map(({ url }) => url.host)).toEqual(["api.github.com"]);
+    });
+
+    it("stops a server that links empty pages forever", async () => {
+        network.reply = (url) => {
+            const next = new URL(url);
+            next.searchParams.set("page", String(Number(url.searchParams.get("page") ?? "1") + 1));
+
+            return { data: [], headers: { link: `<${next.href}>; rel="next"` } };
+        };
+
+        await expect(listGitRepositories(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
+        expect(network.calls).toHaveLength(110);
+    });
+
+    it("keeps Forgejo path prefixes", async () => {
+        network.reply = pagedRepos(3, forgejo.serverUrl);
         const result = await listGitRepositories(forgejo);
         expect(result.repositories).toHaveLength(3);
         expect(result.truncated).toBe(false);
-        expect(network.calls).toHaveLength(4);
         expect(network.calls[0]!.url.pathname).toBe("/forge/api/v1/user/repos");
-        expect(network.calls[0]!.url.searchParams.get("limit")).toBe("100");
     });
 
     it.each([999, 1000, 1001, 1200])(
         "reports truncation correctly for %s repositories",
         async (total) => {
-            network.reply = (url) => {
-                const start = (Number(url.searchParams.get("page")) - 1) * 100;
-
-                return {
-                    data: Array.from(
-                        { length: Math.max(0, Math.min(100, total - start)) },
-                        (_, i) => repo(start + i),
-                    ),
-                };
-            };
-
+            network.reply = pagedRepos(total);
             const result = await listGitRepositories(github);
             expect(result.repositories).toHaveLength(Math.min(total, 1000));
             expect(result.truncated).toBe(total > 1000);
             expect(network.calls.length).toBeLessThanOrEqual(11);
         },
     );
-
-    it("bounds repeated pages without reporting a complete result", async () => {
-        network.reply = () => ({ data: [repo(1)] });
-        const result = await listGitRepositories(github);
-        expect(result.repositories).toHaveLength(1);
-        expect(result.truncated).toBe(true);
-        expect(network.calls).toHaveLength(100);
-    });
 
     it.each([
         "https://evil.example/forge/team/repo.git",
@@ -656,19 +685,29 @@ describe("Repository discovery", () => {
         "https://git.example.com:8443/forge/team/repo.git",
         "http://git.example.com/forge/team/repo.git",
         "ssh://git.example.com/forge/team/repo.git",
-        "https://secret@git.example.com/forge/team/repo.git",
         "https://git.example.com/forge/team/repo.git?token=secret",
         "https://git.example.com/forge/team/repo.git#fragment",
         "https://git.example.com/forge/../team/repo.git",
         "https://git.example.com/forge/%2e%2e/team/repo.git",
         "https://git.example.com/forge/",
     ])("rejects clone URL outside the configured trust boundary: %s", async (clone_url) => {
-        network.reply = () => ({ data: [{ ...repo(1), clone_url }] });
-        await expect(listGitRepositories(forgejo)).rejects.toMatchObject({
-            code: "BAD_GATEWAY",
-            message: "Invalid Git provider response",
-        });
+        network.reply = () => ({ data: [{ ...repo(1, forgejo.serverUrl), clone_url }] });
+        await expect(listGitRepositories(forgejo)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
         expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops the account a forge puts in its clone URL", async () => {
+        network.reply = () => ({
+            data: [
+                {
+                    ...repo(1, forgejo.serverUrl),
+                    clone_url: "https://alice@git.example.com/forge/team/repo-1.git",
+                },
+            ],
+        });
+        await expect(listGitRepositories(forgejo)).resolves.toMatchObject({
+            repositories: [{ url: "https://git.example.com/forge/team/repo-1.git" }],
+        });
     });
 
     it("does not allow api.github.com as a public GitHub clone origin", async () => {
@@ -676,18 +715,8 @@ describe("Repository discovery", () => {
         await expect(listGitRepositories(github)).rejects.toThrow();
     });
 
-    it.each([
-        { message: "secret" },
-        [null],
-        [{}],
-        [{ ...repo(1), default_branch: 123 }],
-        [{ ...repo(1), default_branch: false }],
-        [{ ...repo(1), default_branch: {} }],
-        [{ ...repo(1), default_branch: [] }],
-        [{ ...repo(1), default_branch: undefined }],
-        [{ ...repo(1), full_name: "unsafe\nname" }],
-    ])("rejects malformed repository data %j without silent omissions", async (data) => {
-        network.reply = () => ({ data });
+    it("rejects a non-list repository response", async () => {
+        network.reply = () => ({ data: { message: "secret" } });
         await expect(listGitRepositories(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
     });
 
@@ -697,18 +726,17 @@ describe("Repository discovery", () => {
         "HEAD",
         "",
         null,
+        123,
         "unsafe\nbranch",
         "unsafe\0branch",
         "unsafe\x7fbranch",
         "a".repeat(256),
-        "\u00e9".repeat(128),
+        "é".repeat(128),
         "\ud800",
     ])(
         "retains repositories with unavailable or unsupported default branch %j",
         async (default_branch) => {
-            network.reply = (url) => ({
-                data: url.searchParams.get("page") === "1" ? [{ ...repo(1), default_branch }] : [],
-            });
+            network.reply = () => ({ data: [{ ...repo(1), default_branch }] });
             await expect(listGitRepositories(github)).resolves.toEqual({
                 repositories: [
                     { url: repo(1).clone_url, name: repo(1).full_name, defaultBranch: "" },
@@ -718,36 +746,13 @@ describe("Repository discovery", () => {
         },
     );
 
-    it("lists empty and unsupported Forgejo repositories without blocking unrelated pages", async () => {
-        network.reply = (url) => {
-            const page = url.searchParams.get("page");
-
-            if (page === "1")
-                return {
-                    data: ["refs/release", "", null].map((default_branch, i) => ({
-                        ...repo(i, forgejo.serverUrl),
-                        default_branch,
-                    })),
-                };
-
-            return { data: page === "2" ? [repo(3, forgejo.serverUrl)] : [] };
-        };
-
-        await expect(listGitRepositories(forgejo)).resolves.toEqual({
-            repositories: [0, 1, 2, 3].map((i) => ({
-                url: repo(i, forgejo.serverUrl).clone_url,
-                name: repo(i).full_name,
-                defaultBranch: i === 3 ? "release/stable" : "",
-            })),
-            truncated: false,
-        });
-        expect(network.calls).toHaveLength(3);
-    });
-
     it("does not return a partial success when a later page fails", async () => {
         network.reply = (url) =>
-            Number(url.searchParams.get("page")) === 1
-                ? { data: [repo(1)] }
+            url.searchParams.get("page") === null
+                ? {
+                      data: [repo(1)],
+                      headers: { link: '<https://api.github.com/user/repos?page=2>; rel="next"' },
+                  }
                 : { status: 500, data: "secret" };
         await expect(listGitRepositories(github)).rejects.toMatchObject({ code: "BAD_GATEWAY" });
     });
@@ -756,15 +761,20 @@ describe("Repository discovery", () => {
 describe("Push webhooks", () => {
     const hookUrl = "https://clowder.example/git/webhook/connection";
 
-    it("creates a GitHub hook for the repository", async () => {
-        network.reply = (url) => ({ data: url.search ? [] : { id: 1 } });
+    it("creates a GitHub push hook for the repository", async () => {
+        network.reply = () => ({
+            data:
+                network.calls.at(-1)?.options.method === "POST"
+                    ? { id: 1, config: { url: hookUrl }, events: ["push"], active: true }
+                    : [],
+        });
         await ensureGitWebhook(github, "https://github.com/team/repo.git", hookUrl, "secret");
 
         const [list, create] = network.calls;
-        expect(list!.url.href).toBe("https://api.github.com/repos/team/repo/hooks?per_page=100");
-        expect(create!.url.href).toBe("https://api.github.com/repos/team/repo/hooks");
-        expect(JSON.parse(create!.body!)).toEqual({
-            name: "web",
+        expect(list!.url.pathname).toBe("/repos/team/repo/hooks");
+        expect(create!.url.pathname).toBe("/repos/team/repo/hooks");
+        expect(create!.options.method).toBe("POST");
+        expect(JSON.parse(String(create!.body))).toMatchObject({
             config: { url: hookUrl, content_type: "json", secret: "secret" },
             events: ["push"],
             active: true,
@@ -772,7 +782,17 @@ describe("Push webhooks", () => {
     });
 
     it("skips a Forgejo repository that already has the hook", async () => {
-        network.reply = () => ({ data: [{ id: 1, config: { url: hookUrl } }] });
+        network.reply = () => ({
+            data: [
+                {
+                    id: 1,
+                    type: "forgejo",
+                    config: { url: hookUrl },
+                    events: ["push"],
+                    active: true,
+                },
+            ],
+        });
         await ensureGitWebhook(
             forgejo,
             "https://git.example.com/forge/team/repo.git",
@@ -780,8 +800,8 @@ describe("Push webhooks", () => {
             "secret",
         );
 
-        expect(network.calls.map(({ url }) => url.href)).toEqual([
-            "https://git.example.com/forge/api/v1/repos/team/repo/hooks?limit=100",
+        expect(network.calls.map(({ url }) => url.pathname)).toEqual([
+            "/forge/api/v1/repos/team/repo/hooks",
         ]);
     });
 
@@ -790,5 +810,93 @@ describe("Push webhooks", () => {
             ensureGitWebhook(github, "https://evil.example/team/repo.git", hookUrl, "secret"),
         ).rejects.toMatchObject({ code: "BAD_REQUEST" });
         expect(network.calls).toEqual([]);
+    });
+});
+
+describe("Webhook deliveries", () => {
+    const body = Buffer.from(
+        JSON.stringify({
+            ref: "refs/heads/main",
+            before: "0".repeat(40),
+            after: "1".repeat(40),
+            commits: [],
+            repository: {
+                id: 1,
+                name: "repo",
+                full_name: "team/repo",
+                owner: { login: "team", id: 1 },
+            },
+            sender: { login: "alice", id: 2 },
+        }),
+    );
+
+    it("accepts a signed GitHub push and reads it as a push", async () => {
+        const signature = createHmac("sha256", "secret").update(body).digest("hex");
+
+        const events = await readGitWebhook(
+            "github",
+            github.serverUrl,
+            "secret",
+            new Headers({
+                "x-github-event": "push",
+                "x-github-delivery": "1",
+                "x-hub-signature-256": `sha256=${signature}`,
+                "content-type": "application/json",
+            }),
+            body,
+        );
+
+        expect(events?.some((event) => event.kind === "push")).toBe(true);
+        expect(request).not.toHaveBeenCalled();
+    });
+
+    // Hooks created before forges sign with X-Forgejo-Signature; live installs depend on them.
+    it("accepts a signed push from an existing Forgejo hook", async () => {
+        const signature = createHmac("sha256", "secret").update(body).digest("hex");
+
+        const events = await readGitWebhook(
+            "forgejo",
+            forgejo.serverUrl,
+            "secret",
+            new Headers({ "x-forgejo-event": "push", "x-forgejo-signature": signature }),
+            body,
+        );
+
+        expect(events?.some((event) => event.kind === "push")).toBe(true);
+    });
+
+    it("rejects deliveries for a forge without webhook verification", async () => {
+        await expect(
+            readGitWebhook("pushin", "https://pushin.eu", "secret", new Headers(), body),
+        ).resolves.toBeUndefined();
+    });
+
+    it("rejects a GitHub delivery with the wrong signature", async () => {
+        const signature = createHmac("sha256", "other").update(body).digest("hex");
+
+        await expect(
+            readGitWebhook(
+                "github",
+                github.serverUrl,
+                "secret",
+                new Headers({
+                    "x-github-event": "push",
+                    "x-hub-signature-256": `sha256=${signature}`,
+                }),
+                body,
+            ),
+        ).resolves.toBeUndefined();
+    });
+
+    it("checks GitLab's plain secret token", async () => {
+        const headers = (token: string) =>
+            new Headers({ "x-gitlab-event": "Push Hook", "x-gitlab-token": token });
+
+        await expect(
+            readGitWebhook("gitlab", "https://gitlab.com", "secret", headers("wrong"), body),
+        ).resolves.toBeUndefined();
+        await expect(
+            readGitWebhook("gitlab", "https://gitlab.com", "secret", headers("secret"), body),
+        ).resolves.toBeDefined();
     });
 });

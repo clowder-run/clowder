@@ -25,7 +25,10 @@
         TableHeader,
         TableRow,
     } from "$lib/components/ui/table";
-    import { connectionDialogUrl } from "$lib/params/git-query-params";
+    import {
+        connectionDialogUrl,
+        gitProviderLabels,
+    } from "$lib/params/git-query-params";
     import { orpc, queryClient } from "$lib/api/orpc";
     import ArrowLeft from "phosphor-svelte/lib/ArrowLeftIcon";
     import {
@@ -75,12 +78,6 @@
             },
         }),
     );
-
-    const providerNames = {
-        github: "GitHub",
-        forgejo: "Forgejo",
-        generic: "Generic Git server",
-    };
 
     const authLabel = $derived(
         connection?.authType === "oauth"
@@ -153,7 +150,7 @@
                         {connection.name}
                     </h1>
                     <p class="truncate text-sm text-muted-foreground">
-                        {providerNames[connection.provider]}
+                        {gitProviderLabels[connection.provider]}
                     </p>
                 </div>
             </div>

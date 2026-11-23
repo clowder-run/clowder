@@ -4,6 +4,7 @@ import {
     deploymentLogs,
     deployments,
     type DeploymentMetadata,
+    type GitProvider,
     resourceDeploymentInputs,
     resources,
 } from "@clowder/db/schema/index";
@@ -65,9 +66,7 @@ export async function readComposeConfigFiles(
  * `configFiles` comes from `readComposeConfigFiles` for Git-backed resources.
  */
 // The deployment source for a Git connection's provider; a plain Git server is just "git".
-export function deploymentSource(
-    provider: "github" | "forgejo" | "generic",
-): DeploymentMetadata["source"] {
+export function deploymentSource(provider: GitProvider): DeploymentMetadata["source"] {
     return provider === "generic" ? "git" : provider;
 }
 

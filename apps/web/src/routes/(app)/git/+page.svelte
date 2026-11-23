@@ -27,6 +27,7 @@
     import {
         connectionDialogParsers,
         connectionDialogUrl,
+        gitProviderLabels,
     } from "$lib/params/git-query-params";
     import { orpc } from "$lib/api/orpc";
     import ChevronRight from "phosphor-svelte/lib/CaretRightIcon";
@@ -100,12 +101,6 @@
             params.dialog.current === "edit-connection" &&
             !editingConnection,
     );
-
-    const providerNames = {
-        github: "GitHub",
-        forgejo: "Forgejo",
-        generic: "Generic Git server",
-    };
 
     const oauthErrors = {
         configuration:
@@ -332,7 +327,9 @@
                             <span
                                 class="block truncate text-xs text-muted-foreground"
                             >
-                                {providerNames[connection.provider]} · {connection.serverUrl}
+                                {gitProviderLabels[
+                                    connection.provider
+                                ]} · {connection.serverUrl}
                             </span>
                         </span>
                         <ChevronRight

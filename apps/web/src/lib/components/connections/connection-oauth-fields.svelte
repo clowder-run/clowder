@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { GitProvider } from "$lib/params/git-query-params";
     import {
         Alert,
         AlertDescription,
@@ -50,7 +51,7 @@
         id: string;
         busy: boolean;
         pending: "" | "test" | "save" | "oauth" | "app";
-        provider: "forgejo" | "github" | "generic";
+        provider: GitProvider;
         initial: { account: { login: string } | null } | null;
         keepOAuth: boolean;
         oauthSetupQuery: CreateQueryResult<
@@ -198,7 +199,7 @@
                 organization. No environment editing or restart is
                 needed.
             </p>
-            {#if provider === "forgejo"}
+            {#if provider === "forgejo" || provider === "gitea"}
                 <ol
                     class="list-decimal space-y-1 pl-5 text-sm text-muted-foreground"
                 >

@@ -3197,7 +3197,7 @@ describe("Git connections/resources (PostgreSQL)", () => {
 
         it("answers pings and ignores other events", async () => {
             expect(await deliver("ping", "{}", sign("{}"))).toMatchObject({ status: 200 });
-            expect(await deliver("issues", "{}", sign("{}"))).toMatchObject({ status: 202 });
+            expect(await deliver("issues", "{}", sign("{}"))).toMatchObject({ status: 200 });
             expect(queue).not.toHaveBeenCalled();
         });
 
