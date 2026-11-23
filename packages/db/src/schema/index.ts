@@ -555,6 +555,7 @@ export const sandboxImages = t.pgTable(
             .notNull()
             .references(() => organization.id, { onDelete: "cascade" }),
         provider: t.text("provider").$type<SandboxProvider>().notNull(),
+        name: t.text("name"),
         // An OCI reference on Uncloud, the provider's own image ID elsewhere; also its label in the UI.
         image: t.text("image").notNull(),
         createdAt: t
