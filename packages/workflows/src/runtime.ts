@@ -26,8 +26,10 @@ import {
     DestroySandbox,
     ProvisionSandbox,
     RollOutMonitoring,
+    SendNotification,
     WatchGitSources,
 } from "./jobs";
+import { deliverNotification, notifyDeploymentSettled } from "./notifications/send";
 import { provisionCluster } from "./provision-cluster";
 import { reconcileBucket } from "./reconcile-bucket";
 import { destroySandbox, provisionSandbox } from "./sandbox";
@@ -93,6 +95,8 @@ async function runAttemptAsync(
     }
 
     await setInitializationStatus(db, clusterId, "ready", null).catch(() => {});
+
+    if (deployment) await notifyDeploymentSettled(db, deployment.id);
 }
 
 // Never rolls monitoring backward: a newer version's job waits for a newer worker, and a stale
@@ -147,7 +151,10 @@ function jobHandlersLive(db: Database, watchGitSources: GitWatcher) {
         DeployResource.toLayer(
             ({ deploymentId }) =>
                 attempt(
-                    (signal) => deployResource(db, deploymentId, signal),
+                    (signal) =>
+                        deployResource(db, deploymentId, signal).then(() =>
+                            notifyDeploymentSettled(db, deploymentId),
+                        ),
                     // Keep the redacted failure (and its unrecoverable mark), never a raw cause.
                     (error) =>
                         error.message === RESOURCE_FAILURE_MESSAGE
@@ -159,7 +166,10 @@ function jobHandlersLive(db: Database, watchGitSources: GitWatcher) {
         ProvisionCluster.toLayer(
             ({ deploymentId }) =>
                 attempt(
-                    (signal) => provisionCluster(db, deploymentId, signal),
+                    (signal) =>
+                        provisionCluster(db, deploymentId, signal).then(() =>
+                            notifyDeploymentSettled(db, deploymentId),
+                        ),
                     // provisionCluster records its own failure; uc's messages carry no secrets.
                     (error) => error,
                 ),
@@ -168,7 +178,10 @@ function jobHandlersLive(db: Database, watchGitSources: GitWatcher) {
         AddMachine.toLayer(
             ({ deploymentId }) =>
                 attempt(
-                    (signal) => addMachine(db, deploymentId, signal),
+                    (signal) =>
+                        addMachine(db, deploymentId, signal).then(() =>
+                            notifyDeploymentSettled(db, deploymentId),
+                        ),
                     // addMachine records its own failure; uc's messages carry no secrets.
                     (error) => error,
                 ),
@@ -185,7 +198,10 @@ function jobHandlersLive(db: Database, watchGitSources: GitWatcher) {
         ProvisionSandbox.toLayer(
             ({ deploymentId }) =>
                 attempt(
-                    (signal) => provisionSandbox(db, deploymentId, signal),
+                    (signal) =>
+                        provisionSandbox(db, deploymentId, signal).then(() =>
+                            notifyDeploymentSettled(db, deploymentId),
+                        ),
                     // provisionSandbox records its own failure; deployCompose masks the password.
                     (error) => error,
                 ),
@@ -194,7 +210,10 @@ function jobHandlersLive(db: Database, watchGitSources: GitWatcher) {
         DestroySandbox.toLayer(
             ({ deploymentId }) =>
                 attempt(
-                    (signal) => destroySandbox(db, deploymentId, signal),
+                    (signal) =>
+                        destroySandbox(db, deploymentId, signal).then(() =>
+                            notifyDeploymentSettled(db, deploymentId),
+                        ),
                     // destroySandbox records its own failure; uc's messages carry no secrets.
                     (error) => error,
                 ),
@@ -224,6 +243,15 @@ function jobHandlersLive(db: Database, watchGitSources: GitWatcher) {
                 ),
             // A webhook check runs beside a slow poll instead of waiting behind it; row locks keep both safe.
             { concurrency: 2 },
+        ),
+        SendNotification.toLayer(
+            ({ deploymentId, channelId }) =>
+                attempt(
+                    (signal) => deliverNotification(db, deploymentId, channelId, signal),
+                    // Status codes and resolver errors only; response bodies are never read.
+                    (error) => error,
+                ),
+            { concurrency: 4 },
         ),
     );
 }
@@ -275,11 +303,22 @@ function deploymentFailureMessage(name: string) {
     return RESOURCE_FAILURE_MESSAGE;
 }
 
+// effect-mq namespaces deterministic ids as `<JobName>/<idempotencyKey>`; deployments store the key.
+function jobKey(jobId: string) {
+    return jobId.includes("/") ? jobId.slice(jobId.indexOf("/") + 1) : jobId;
+}
+
+// A retry settles later, so only the last attempt's outcome is news.
+async function notifyFailure(db: Database, failure: Worker.JobFailure) {
+    if (failure.willRetry) return;
+    const deployment = await getDeploymentByJobId(db, jobKey(failure.jobId)).catch(() => null);
+
+    if (deployment) await notifyDeploymentSettled(db, deployment.id);
+}
+
 async function recordFailureAsync(db: Database, failure: Worker.JobFailure) {
-    // effect-mq namespaces deterministic ids as `<JobName>/<idempotencyKey>`,
-    // so strip the prefix before matching our `${clusterId}:${requestId}` shape.
-    const rawId = failure.jobId;
-    const key = rawId.includes("/") ? rawId.slice(rawId.indexOf("/") + 1) : rawId;
+    // Matches our `${clusterId}:${requestId}` shape once the prefix is stripped.
+    const key = jobKey(failure.jobId);
     const sep = key.indexOf(":");
     const clusterId = sep === -1 ? key : key.slice(0, sep);
     const deployment = key ? await getDeploymentByJobId(db, key).catch(() => null) : null;
@@ -367,6 +406,7 @@ function workerLive(db: Database) {
             git: { concurrency: 2 },
             provision: { concurrency: 2 },
             machines: { concurrency: 2 },
+            notifications: { concurrency: 4 },
         },
         lockDuration: "10 minutes",
         // effect-mq also delivers cross-process cancellation on this heartbeat.
@@ -389,7 +429,9 @@ function workerLive(db: Database) {
             )
                 return Effect.void;
 
-            return Effect.promise(() => recordFailureAsync(db, failure)).pipe(Effect.ignore);
+            return Effect.promise(() =>
+                recordFailureAsync(db, failure).finally(() => notifyFailure(db, failure)),
+            ).pipe(Effect.ignore);
         },
     });
 }

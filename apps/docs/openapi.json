@@ -6665,6 +6665,276 @@
                 }
             }
         },
+        "/notifications/list": {
+            "post": {
+                "operationId": "notifications.list",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {}
+                    }
+                }
+            }
+        },
+        "/notifications/create": {
+            "post": {
+                "operationId": "notifications.create",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                    },
+                                    "events": {
+                                        "type": "array",
+                                        "items": {
+                                            "enum": [
+                                                "deployment.succeeded",
+                                                "deployment.failed"
+                                            ],
+                                            "type": "string"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 2
+                                    },
+                                    "config": {
+                                        "oneOf": [
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "type": {
+                                                        "const": "discord"
+                                                    },
+                                                    "webhookUrl": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 2048,
+                                                        "pattern": "^https:\\/\\/(?:(?:canary|ptb)\\.)?discord(?:app)?\\.com\\/api\\/webhooks\\/\\d+\\/[\\w-]+(?:\\?[^\\s#]*)?$"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "type",
+                                                    "webhookUrl"
+                                                ]
+                                            },
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "type": {
+                                                        "const": "telegram"
+                                                    },
+                                                    "botToken": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 256,
+                                                        "pattern": "^\\d+:[\\w-]+$"
+                                                    },
+                                                    "chatId": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 64,
+                                                        "pattern": "^(?:-?\\d+|@\\w{5,})$"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "type",
+                                                    "botToken",
+                                                    "chatId"
+                                                ]
+                                            },
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "type": {
+                                                        "const": "ntfy"
+                                                    },
+                                                    "serverUrl": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 2048,
+                                                        "format": "uri",
+                                                        "pattern": "^https?:\\/\\/"
+                                                    },
+                                                    "topic": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 64,
+                                                        "pattern": "^[\\w-]+$"
+                                                    },
+                                                    "token": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 256
+                                                    }
+                                                },
+                                                "required": [
+                                                    "type",
+                                                    "serverUrl",
+                                                    "topic"
+                                                ]
+                                            },
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "type": {
+                                                        "const": "gchat"
+                                                    },
+                                                    "webhookUrl": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 2048,
+                                                        "pattern": "^https:\\/\\/chat\\.googleapis\\.com\\/v1\\/spaces\\/[^/\\s]+\\/messages\\?\\S+$"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "type",
+                                                    "webhookUrl"
+                                                ]
+                                            },
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "type": {
+                                                        "const": "webhook"
+                                                    },
+                                                    "url": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 2048,
+                                                        "format": "uri",
+                                                        "pattern": "^https?:\\/\\/"
+                                                    },
+                                                    "secret": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 256
+                                                    }
+                                                },
+                                                "required": [
+                                                    "type",
+                                                    "url"
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "name",
+                                    "events",
+                                    "config"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {}
+                    }
+                }
+            }
+        },
+        "/notifications/setEnabled": {
+            "post": {
+                "operationId": "notifications.setEnabled",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "channelId": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "enabled": {
+                                        "type": "boolean"
+                                    }
+                                },
+                                "required": [
+                                    "channelId",
+                                    "enabled"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {}
+                    }
+                }
+            }
+        },
+        "/notifications/remove": {
+            "post": {
+                "operationId": "notifications.remove",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "channelId": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    }
+                                },
+                                "required": [
+                                    "channelId"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {}
+                    }
+                }
+            }
+        },
+        "/notifications/test": {
+            "post": {
+                "operationId": "notifications.test",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "channelId": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    }
+                                },
+                                "required": [
+                                    "channelId"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {}
+                    }
+                }
+            }
+        },
         "/terminal/open": {
             "post": {
                 "operationId": "terminal.open",
