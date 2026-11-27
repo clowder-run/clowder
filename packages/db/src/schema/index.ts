@@ -555,6 +555,7 @@ export const sandboxImages = t.pgTable(
             .notNull()
             .references(() => organization.id, { onDelete: "cascade" }),
         provider: t.text("provider").$type<SandboxProvider>().notNull(),
+        name: t.text("name"),
         // An OCI reference on Uncloud, the provider's own image ID elsewhere; also its label in the UI.
         image: t.text("image").notNull(),
         createdAt: t
@@ -682,6 +683,53 @@ export const sandboxes = t.pgTable(
         // Destroying a sandbox deletes its row, so a taken port or volume is always a live one.
         t.unique("sandboxes_cluster_ssh_port_uidx").on(table.clusterId, table.sshPort),
         t.unique("sandboxes_volume_uidx").on(table.volumeId),
+    ],
+);
+
+export type NotificationEvent = "deployment.succeeded" | "deployment.failed";
+
+/** Where a channel delivers. Webhook URLs and bot tokens are credentials. */
+export type NotificationChannelConfig =
+    | { type: "discord"; webhookUrl: string }
+    | { type: "telegram"; botToken: string; chatId: string }
+    | { type: "ntfy"; serverUrl: string; topic: string; token?: string }
+    | { type: "gchat"; webhookUrl: string }
+    | { type: "webhook"; url: string; secret?: string };
+
+export type NotificationChannelType = NotificationChannelConfig["type"];
+
+// Where an organization hears about deployments settling. The destination is never returned to
+// the browser; changing it means adding the channel again.
+export const notificationChannels = t.pgTable(
+    "notification_channels",
+    {
+        id: t.uuid("id").primaryKey(),
+        organizationId: t
+            .text("organization_id")
+            .notNull()
+            .references(() => organization.id, { onDelete: "cascade" }),
+        name: t.text("name").notNull(),
+        type: t.text("type").$type<NotificationChannelType>().notNull(),
+        // JSON of `NotificationChannelConfig`, including its type.
+        config: encryptedText("config", "notification-channel").notNull(),
+        events: t.jsonb("events").$type<NotificationEvent[]>().notNull(),
+        enabled: t.boolean("enabled").notNull().default(true),
+        createdAt: t
+            .timestamp("created_at", { withTimezone: true })
+            .notNull()
+            .$defaultFn(() => new Date()),
+        updatedAt: t
+            .timestamp("updated_at", { withTimezone: true })
+            .notNull()
+            .$defaultFn(() => new Date())
+            .$onUpdate(() => new Date()),
+    },
+    (table) => [
+        t.index("notification_channels_organization_idx").on(table.organizationId),
+        t.check(
+            "notification_channels_type_check",
+            sql`${table.type} in ('discord', 'telegram', 'ntfy', 'gchat', 'webhook')`,
+        ),
     ],
 );
 

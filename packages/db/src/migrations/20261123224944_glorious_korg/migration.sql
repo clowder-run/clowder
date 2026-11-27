@@ -1,0 +1,1 @@
+ALTER TABLE "sandbox_images" ADD COLUMN "name" text;

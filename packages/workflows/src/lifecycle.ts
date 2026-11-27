@@ -36,7 +36,7 @@ export function startWorker(
     globalThis.__clowderWorker = running;
     process.on("sveltekit:shutdown", running.stop);
     console.log(
-        "[worker] starting deployment worker (queues: initialize, deploy, buckets, sandboxes, monitoring, health, git, provision, machines)",
+        "[worker] starting deployment worker (queues: initialize, deploy, buckets, sandboxes, monitoring, health, git, provision, machines, notifications)",
     );
 
     // One interruptible parent owns both loops and waits for layer finalizers on shutdown.

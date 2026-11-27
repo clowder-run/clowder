@@ -246,3 +246,31 @@ export const AddMachine: Job.Job<"AddMachine", typeof resourcePayload, Schema.Vo
             },
         },
     });
+
+const notificationPayload = Schema.Struct({
+    deploymentId: Schema.String,
+    channelId: Schema.String,
+});
+
+// One per channel, so a channel that's down retries without repeating the message elsewhere.
+export const SendNotification: Job.Job<
+    "SendNotification",
+    typeof notificationPayload,
+    Schema.Void,
+    Schema.Never
+> = Job.make("SendNotification", {
+    payload: notificationPayload,
+    success: Schema.Void,
+    idempotencyKey: ({ deploymentId, channelId }) => `${deploymentId}:${channelId}`,
+    queue: "notifications",
+    defaults: {
+        attempts: 5,
+        backoff: { type: "exponential", delay: "15 seconds" },
+        timeout: "30 seconds",
+        keep: {
+            // Long enough that a repeated settle for the same deployment is deduplicated.
+            completed: { age: "1 day" },
+            failed: { age: "7 days" },
+        },
+    },
+});
