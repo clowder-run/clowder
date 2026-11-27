@@ -121,6 +121,10 @@
                     </MenuSubPopup>
                 </MenuSub>
             {:else}
+                <!-- A resource's own frame: its id is the resource id, so this renames the resource. -->
+                <MenuItem onclick={() => actions.edit("rename", id)}>
+                    Rename
+                </MenuItem>
                 <!-- A resource's own frame: grouping it swaps this frame for the group's. -->
                 <MenuItem
                     onclick={() => actions.edit("new-group", id)}
